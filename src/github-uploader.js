@@ -104,6 +104,15 @@
       });
 
       if (!branchRes.ok && branchRes.status === 404) {
+        if (repoData.size === 0) {
+          return {
+            ok: true,
+            fullName: repoData.full_name,
+            defaultBranch: repoData.default_branch || this.branch,
+            private: repoData.private,
+            empty: true
+          };
+        }
         throw new Error(`Branch "${this.branch}" does not exist in repository "${this.owner}/${this.repo}". Default branch is "${repoData.default_branch}".`);
       }
 

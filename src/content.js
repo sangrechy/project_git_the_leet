@@ -703,10 +703,17 @@
    * Periodic polling after submit to catch submission completion via URL, DOM or REST API
    */
   function pollForResult(problemSlug, remainingTries) {
-    if (remainingTries <= 0 || isProcessingSubmission) return;
+    if (remainingTries <= 0) return;
+    if (isProcessingSubmission) {
+      setTimeout(() => pollForResult(problemSlug, remainingTries - 1), 600);
+      return;
+    }
 
     setTimeout(async () => {
-      if (isProcessingSubmission) return;
+      if (isProcessingSubmission) {
+        pollForResult(problemSlug, remainingTries - 1);
+        return;
+      }
 
       // 1. Check URL for submission ID
       const urlSubId = contestGuard.extractSubmissionId(window.location.href);

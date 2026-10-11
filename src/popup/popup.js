@@ -559,7 +559,7 @@
   }
 
   // ==========================================
-  // Initial Page Load
+  // Initial Page Load & Live Sync Listeners
   // ==========================================
   async function init() {
     await Promise.all([
@@ -569,5 +569,23 @@
     ]);
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  // Real-time UI updates when queue or settings change in background
+  if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.onChanged) {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local') {
+        if (changes['leetcode_backup_queue']) {
+          refreshQueueView();
+        }
+        if (changes['leetcode_backup_settings']) {
+          updateSyncStatusUI();
+        }
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
