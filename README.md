@@ -48,7 +48,7 @@ leetcode-backup/
 Each accepted submission is saved in a standardized folder structure using the 4-digit zero-padded problem number and slug:
 
 ```text
-submissions/
+problems/
 └── 0001-two-sum/
     ├── solution.py
     └── metadata.json
@@ -140,7 +140,7 @@ flowchart TD
 3. When you submit your code, the DOM observer monitors for the **Accepted** verdict.
 4. The **Submission Reader** queries LeetCode's authenticated endpoint for the submission ID, code, language, runtime, memory, and question metadata.
 5. The submission is queued in `chrome.storage.local` with status `pending`.
-6. The **GitHub Uploader** writes `submissions/0001-two-sum/solution.<ext>` and `metadata.json` via the GitHub REST API.
+6. The **GitHub Uploader** writes `problems/0001-two-sum/solution.<ext>` and `metadata.json` via the GitHub REST API.
 7. Upon successful GitHub response, the status updates to `synced`. If the network fails, the item remains `pending` or `failed` for automatic or manual retry.
 
 ### 2. Historical Backfill Flow

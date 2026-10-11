@@ -99,8 +99,8 @@
       const ext = this.getFileExtension(language);
       return {
         folderName,
-        solutionPath: `submissions/${folderName}/solution.${ext}`,
-        metadataPath: `submissions/${folderName}/metadata.json`,
+        solutionPath: `problems/${folderName}/solution.${ext}`,
+        metadataPath: `problems/${folderName}/metadata.json`,
         extension: ext
       };
     }
