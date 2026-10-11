@@ -34,6 +34,17 @@
         "https://leetcode.cn/*"
       ],
       "js": [
+        "src/interceptor.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://leetcode.com/*",
+        "https://leetcode.cn/*"
+      ],
+      "js": [
         "src/contest-guard.js",
         "src/submission-reader.js",
         "src/queue.js",

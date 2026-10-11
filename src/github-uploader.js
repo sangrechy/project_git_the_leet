@@ -109,7 +109,7 @@
     /**
      * Retrieves existing file SHA if present on the target branch
      *
-     * @param {string} filePath - Path in repository (e.g. "problems/0001-two-sum/solution.py")
+     * @param {string} filePath - Path in repository (e.g. "leetcode_problem/0001-two-sum/solution.py")
      * @returns {Promise<string|null>} File SHA or null if not found
      */
     async getFileSha(filePath) {

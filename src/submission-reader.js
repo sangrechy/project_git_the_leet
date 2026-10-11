@@ -99,8 +99,8 @@
       const ext = this.getFileExtension(language);
       return {
         folderName,
-        solutionPath: `problems/${folderName}/solution.${ext}`,
-        metadataPath: `problems/${folderName}/metadata.json`,
+        solutionPath: `leetcode_problem/${folderName}/solution.${ext}`,
+        metadataPath: `leetcode_problem/${folderName}/metadata.json`,
         extension: ext
       };
     }
@@ -145,7 +145,39 @@
      * @param {number} limit - Number of submissions to fetch (default: 5)
      * @returns {Promise<Object|null>}
      */
-    async getLatestAcceptedSubmission(problemSlug, limit = 10) {
+    async getLatestAcceptedSubmission(problemSlug, limit = 5) {
+      // 1. Primary: Use authenticated REST API /api/submissions/ (proven reliable on US and CN)
+      try {
+        const history = await this.fetchSubmissionHistory(0, limit);
+        if (history && history.submissions && history.submissions.length > 0) {
+          const nowSeconds = Math.floor(Date.now() / 1000);
+          // Look for an accepted submission that is recent (last 15 mins) or matches the problem slug
+          const accepted = history.submissions.find(s => {
+            if (s.statusDisplay !== 'Accepted') return false;
+            const isRecent = s.timestamp && (nowSeconds - s.timestamp < 900);
+            const matchesSlug = problemSlug && s.titleSlug && (
+              s.titleSlug === problemSlug ||
+              problemSlug.includes(s.titleSlug) ||
+              s.titleSlug.includes(problemSlug)
+            );
+            return isRecent || matchesSlug;
+          });
+
+          if (accepted) {
+            console.log(`[LeetCode-Backup] Found latest accepted submission #${accepted.id} via /api/submissions/`);
+            return await this.getSubmissionDetails(accepted.id, {
+              problemSlug: problemSlug || accepted.titleSlug,
+              title: accepted.title,
+              statusDisplay: accepted.statusDisplay,
+              lang: accepted.lang
+            });
+          }
+        }
+      } catch (restErr) {
+        console.warn('[LeetCode-Backup] REST getLatestAcceptedSubmission check failed:', restErr.message);
+      }
+
+      // 2. Secondary fallback: GraphQL submissionList query
       const query = `
         query submissionList($offset: Int!, $limit: Int!, $lastKey: String, $questionSlug: String!) {
           submissionList(offset: $offset, limit: $limit, lastKey: $lastKey, questionSlug: $questionSlug) {
@@ -175,10 +207,8 @@
         });
 
         const list = data?.submissionList?.submissions || [];
-        // Find the most recent accepted submission
         const accepted = list.find(s => s.statusDisplay === 'Accepted' && !s.isPending);
         if (accepted) {
-          // Fetch full submission details (including code)
           return await this.getSubmissionDetails(accepted.id, {
             problemSlug,
             title: accepted.title,
