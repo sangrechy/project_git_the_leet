@@ -257,14 +257,24 @@
     if (!settings.githubToken || !settings.repoOwner || !settings.repoName) {
       return;
     }
-    const uploader = new GitHubUploader({
-      token: settings.githubToken,
-      owner: settings.repoOwner,
-      repo: settings.repoName,
-      branch: settings.branch || 'main'
-    });
 
-    await uploader.processQueue(localQueue);
+    try {
+      await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: 'PROCESS_QUEUE' }, (res) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          resolve(res);
+        });
+      });
+    } catch (e) {
+      // Fallback: run directly in popup if background message fails
+      const uploader = new GitHubUploader({
+        token: settings.githubToken,
+        owner: settings.repoOwner,
+        repo: settings.repoName,
+        branch: settings.branch || 'main'
+      });
+      await uploader.processQueue(localQueue);
+    }
     await refreshQueueView();
   }
 

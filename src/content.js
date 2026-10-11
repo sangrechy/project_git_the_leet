@@ -397,7 +397,7 @@
         return;
       }
 
-      // 3. Initiate GitHub upload
+      // 3. Initiate GitHub upload via background service worker (immune to page CORS/CSP restrictions)
       toastHandle.update(
         'loading',
         'Backing up to GitHub...',
@@ -405,32 +405,52 @@
         0
       );
 
-      const uploader = new GitHubUploaderClass({
-        token: settings.githubToken,
-        owner: settings.repoOwner,
-        repo: settings.repoName,
-        branch: settings.branch || 'main'
-      });
-
       try {
         await localQueue.updateStatus(queuedItem.submissionId, 'syncing');
-        await uploader.uploadSubmission(queuedItem);
-        await localQueue.updateStatus(queuedItem.submissionId, 'synced');
 
-        toastHandle.update(
-          'success',
-          'Backed Up to GitHub',
-          `Committed: ${queuedItem.solutionPath}`,
-          4500
-        );
+        const response = await new Promise((resolve, reject) => {
+          try {
+            chrome.runtime.sendMessage({
+              type: 'UPLOAD_SUBMISSION',
+              item: queuedItem
+            }, (res) => {
+              if (chrome.runtime.lastError) {
+                return reject(new Error(chrome.runtime.lastError.message));
+              }
+              resolve(res);
+            });
+          } catch (sendErr) {
+            reject(sendErr);
+          }
+        });
+
+        if (response && response.success) {
+          await localQueue.updateStatus(queuedItem.submissionId, 'synced');
+
+          toastHandle.update(
+            'success',
+            'Backed Up to GitHub',
+            `Committed: ${queuedItem.solutionPath}`,
+            4500
+          );
+        } else {
+          const errMsg = response?.error || 'GitHub upload failed';
+          throw new Error(errMsg);
+        }
       } catch (uploadErr) {
         console.error('[LeetCode-Backup] Upload failed:', uploadErr);
         await localQueue.updateStatus(queuedItem.submissionId, 'failed', { error: uploadErr.message });
+
+        let displayMsg = uploadErr.message || 'Network error';
+        if (displayMsg.includes('Extension context invalidated')) {
+          displayMsg = 'Extension reloaded. Please refresh this tab (F5) to complete backup.';
+        }
+
         toastHandle.update(
           'error',
           'GitHub Upload Failed',
-          `${uploadErr.message}. Queued as pending for retry.`,
-          6000
+          `${displayMsg}. Queued as pending for retry.`,
+          7000
         );
       }
     } catch (err) {

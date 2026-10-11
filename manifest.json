@@ -11,6 +11,9 @@
     "https://leetcode.cn/*",
     "https://api.github.com/*"
   ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {

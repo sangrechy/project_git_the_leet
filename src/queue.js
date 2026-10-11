@@ -58,7 +58,8 @@
     }
 
     /**
-     * Checks if a submission ID has already been recorded or synced
+     * Checks if a submission ID has already been recorded and successfully synced or currently syncing.
+     * Items that previously failed or are pending retry are NOT considered duplicates.
      * @param {string|number} submissionId
      * @returns {Promise<boolean>}
      */
@@ -73,14 +74,16 @@
         ]);
 
         if (syncedIds.includes(strId)) return true;
-        return queue.some(item => String(item.submissionId) === strId);
+        return queue.some(item => String(item.submissionId) === strId && (item.status === 'synced' || item.status === 'syncing'));
       } catch (e) {
         return false;
       }
     }
 
     /**
-     * Adds an accepted submission to the queue with 'pending' status
+     * Adds an accepted submission to the queue with 'pending' status.
+     * If the submission or problem was previously in the queue (e.g. failed or pending),
+     * updates it with the latest code, resets status to pending, and moves it to the front.
      *
      * @param {Object} itemData - Normalized submission details
      * @returns {Promise<Object>} The enqueued item
@@ -92,9 +95,46 @@
       const queue = await this.getQueue();
 
       if (isDup) {
-        console.log(`[LeetCode-Backup] Submission #${submissionId} already queued or synced. Skipping duplicate.`);
+        console.log(`[LeetCode-Backup] Submission #${submissionId} already synced or syncing. Skipping duplicate.`);
         const existing = queue.find(q => String(q.submissionId) === submissionId);
         return existing || null;
+      }
+
+      // Check if this exact submission ID already exists (e.g. was previously failed)
+      const existingIdx = queue.findIndex(q => String(q.submissionId) === submissionId);
+      if (existingIdx !== -1) {
+        const existing = queue[existingIdx];
+        existing.code = itemData.code;
+        existing.metadataJson = itemData.metadataJson;
+        existing.solutionPath = itemData.solutionPath;
+        existing.metadataPath = itemData.metadataPath;
+        existing.language = itemData.language;
+        existing.extension = itemData.extension;
+        existing.status = 'pending';
+        existing.lastError = null;
+        existing.addedAt = Date.now();
+        // Move to front
+        queue.splice(existingIdx, 1);
+        queue.unshift(existing);
+
+        if (this.storage && this._isContextValid()) {
+          try {
+            await this.storage.set({ [STORAGE_KEYS.QUEUE]: queue });
+          } catch (e) {}
+        }
+        console.log(`[LeetCode-Backup] Updated previously failed submission #${submissionId} to pending.`);
+        return existing;
+      }
+
+      // If an earlier submission for the same problem was pending or failed, remove it so the new one supersedes it
+      const prevProblemIdx = queue.findIndex(q =>
+        (q.status === 'pending' || q.status === 'failed') &&
+        ((itemData.problemSlug && q.problemSlug === itemData.problemSlug) ||
+         (itemData.frontendId && q.frontendId === String(itemData.frontendId)))
+      );
+      if (prevProblemIdx !== -1) {
+        console.log(`[LeetCode-Backup] Removing earlier un-synced submission #${queue[prevProblemIdx].submissionId} superseded by #${submissionId}`);
+        queue.splice(prevProblemIdx, 1);
       }
 
       const newItem = {

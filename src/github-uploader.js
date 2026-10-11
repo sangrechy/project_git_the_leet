@@ -3,7 +3,10 @@
  *
  * Uses the GitHub REST API (v2022-11-28) to commit solution code and metadata
  * directly to the user's configured repository using a fine-grained PAT.
- * Retries safely by resolving file SHAs to avoid conflicts.
+ *
+ * Employs atomic single-commit updates via the Git Data API (Blobs, Trees, Commits, Refs)
+ * to completely eliminate race conditions, 409 commit conflicts, and duplicate files.
+ * Overwrites existing solutions and cleans up previous files when re-submitting problems.
  */
 
 (function (root) {
@@ -45,6 +48,13 @@
         'X-GitHub-Api-Version': '2022-11-28',
         'Content-Type': 'application/json'
       };
+    }
+
+    /**
+     * Encodes a repository path preserving forward slashes
+     */
+    _encodePath(repoPath) {
+      return repoPath.replace(/^\/+/, '').split('/').map(encodeURIComponent).join('/');
     }
 
     /**
@@ -94,7 +104,6 @@
       });
 
       if (!branchRes.ok && branchRes.status === 404) {
-        // If specified branch not found, inform about default branch
         throw new Error(`Branch "${this.branch}" does not exist in repository "${this.owner}/${this.repo}". Default branch is "${repoData.default_branch}".`);
       }
 
@@ -107,16 +116,288 @@
     }
 
     /**
-     * Retrieves existing file SHA if present on the target branch
-     * Uses cache-busting timestamp and headers to avoid CDN stale reads.
+     * Creates a git blob for the specified string content (UTF-8 safe)
+     * @param {string} content
+     * @returns {Promise<string>} Blob SHA
+     */
+    async createBlob(content) {
+      const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/blobs`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: this._getHeaders(),
+        body: JSON.stringify({
+          content: utf8ToBase64(content || ''),
+          encoding: 'base64'
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.message || `Failed to create git blob: HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      return data.sha;
+    }
+
+    /**
+     * Commits a solution and its metadata atomically in a single Git commit.
+     * Uses the Git Data API (Blobs -> Tree -> Commit -> Ref update).
+     * If the problem was solved previously, overwrites the files and removes
+     * any old solution file with a different extension.
      *
-     * @param {string} filePath - Path in repository (e.g. "leetcode_problem/0001-two-sum/solution.py")
-     * @returns {Promise<string|null>} File SHA or null if not found
+     * @param {Object} item - Submission item from queue
+     * @param {string} commitMsg - Commit message
+     * @param {number} [maxRetries=3]
+     * @returns {Promise<Object>} Commit summary
+     */
+    async commitAtomicSubmission(item, commitMsg, maxRetries = 3) {
+      this.validateConfig();
+
+      const cleanSolPath = item.solutionPath.replace(/^\/+/, '');
+      const cleanMetaPath = item.metadataPath.replace(/^\/+/, '');
+
+      // 1. Create blobs for solution code and metadata JSON
+      const [solBlobSha, metaBlobSha] = await Promise.all([
+        this.createBlob(item.code),
+        this.createBlob(item.metadataJson)
+      ]);
+
+      let lastError = null;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          // 2. Fetch current branch head ref
+          const ts = Date.now();
+          const refUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/ref/heads/${encodeURIComponent(this.branch)}?_t=${ts}`;
+          const refRes = await fetch(refUrl, {
+            headers: {
+              ...this._getHeaders(),
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache'
+            }
+          });
+
+          if (!refRes.ok) {
+            throw new Error(`Branch head ref check failed: HTTP ${refRes.status}`);
+          }
+
+          const refData = await refRes.json();
+          const latestCommitSha = refData.object.sha;
+
+          // 3. Fetch base commit to get tree SHA
+          const commitUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/commits/${latestCommitSha}`;
+          const commitRes = await fetch(commitUrl, {
+            headers: this._getHeaders()
+          });
+
+          if (!commitRes.ok) {
+            throw new Error(`Base commit retrieval failed: HTTP ${commitRes.status}`);
+          }
+
+          const commitData = await commitRes.json();
+          const baseTreeSha = commitData.tree.sha;
+
+          // 4. Construct tree entries
+          const treeEntries = [
+            {
+              path: cleanSolPath,
+              mode: '100644',
+              type: 'blob',
+              sha: solBlobSha
+            },
+            {
+              path: cleanMetaPath,
+              mode: '100644',
+              type: 'blob',
+              sha: metaBlobSha
+            }
+          ];
+
+          // 5. Inspect problem folder: clean up any older solution files with different extensions
+          const lastSlash = cleanSolPath.lastIndexOf('/');
+          const problemFolder = lastSlash !== -1 ? cleanSolPath.substring(0, lastSlash) : '';
+
+          if (problemFolder) {
+            try {
+              const folderUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${this._encodePath(problemFolder)}?ref=${encodeURIComponent(this.branch)}&_t=${Date.now()}`;
+              const folderRes = await fetch(folderUrl, {
+                headers: {
+                  ...this._getHeaders(),
+                  'Cache-Control': 'no-cache, no-store, must-revalidate'
+                }
+              });
+
+              if (folderRes.ok) {
+                const folderItems = await folderRes.json();
+                if (Array.isArray(folderItems)) {
+                  for (const f of folderItems) {
+                    const fPath = (f.path || '').replace(/^\/+/, '');
+                    const isSolution = f.name && f.name.toLowerCase().startsWith('solution.');
+                    // If an old solution file exists with a different path/extension, delete it from the tree
+                    if (isSolution && fPath !== cleanSolPath) {
+                      treeEntries.push({
+                        path: fPath,
+                        mode: '100644',
+                        type: 'blob',
+                        sha: null // Instructs Git to remove this file
+                      });
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              // Folder inspection is best-effort cleanup; ignore errors
+            }
+          }
+
+          // 6. Create new git tree based on baseTreeSha
+          const treeUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/trees`;
+          const treeRes = await fetch(treeUrl, {
+            method: 'POST',
+            headers: this._getHeaders(),
+            body: JSON.stringify({
+              base_tree: baseTreeSha,
+              tree: treeEntries
+            })
+          });
+
+          if (!treeRes.ok) {
+            const errData = await treeRes.json().catch(() => ({}));
+            throw new Error(errData.message || `Failed to create git tree (HTTP ${treeRes.status})`);
+          }
+
+          const treeData = await treeRes.json();
+          const newTreeSha = treeData.sha;
+
+          // 7. Create commit pointing to new tree
+          const newCommitUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/commits`;
+          const newCommitRes = await fetch(newCommitUrl, {
+            method: 'POST',
+            headers: this._getHeaders(),
+            body: JSON.stringify({
+              message: commitMsg,
+              tree: newTreeSha,
+              parents: [latestCommitSha]
+            })
+          });
+
+          if (!newCommitRes.ok) {
+            const errData = await newCommitRes.json().catch(() => ({}));
+            throw new Error(errData.message || `Failed to create commit (HTTP ${newCommitRes.status})`);
+          }
+
+          const newCommitData = await newCommitRes.json();
+          const newCommitSha = newCommitData.sha;
+
+          // 8. Update branch ref
+          const updateRefUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/refs/heads/${encodeURIComponent(this.branch)}`;
+          const updateRefRes = await fetch(updateRefUrl, {
+            method: 'PATCH',
+            headers: this._getHeaders(),
+            body: JSON.stringify({
+              sha: newCommitSha,
+              force: false
+            })
+          });
+
+          if (updateRefRes.ok) {
+            return {
+              success: true,
+              commitSha: newCommitSha,
+              solutionSha: solBlobSha,
+              metadataSha: metaBlobSha,
+              solutionPath: cleanSolPath,
+              metadataPath: cleanMetaPath
+            };
+          }
+
+          // If branch ref conflict (another commit landed in between), wait and retry
+          const refErr = await updateRefRes.json().catch(() => ({}));
+          const isConflict = updateRefRes.status === 409 || updateRefRes.status === 422;
+
+          if (isConflict && attempt < maxRetries) {
+            const waitMs = attempt * 600;
+            console.warn(`[LeetCode-Backup] Branch ref conflict (attempt ${attempt}/${maxRetries}): ${refErr.message || 'ref moved'}. Retrying in ${waitMs}ms...`);
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
+          }
+
+          throw new Error(refErr.message || `Failed to update branch ref (HTTP ${updateRefRes.status})`);
+        } catch (err) {
+          lastError = err;
+          if (attempt < maxRetries && (err.message.includes('409') || err.message.includes('conflict') || err.message.includes('ref'))) {
+            const waitMs = attempt * 600;
+            await new Promise(r => setTimeout(r, waitMs));
+            continue;
+          }
+          throw err;
+        }
+      }
+
+      throw lastError || new Error('Atomic commit failed after retries.');
+    }
+
+    /**
+     * Fallback sequential commit using GitHub Contents PUT API.
+     * Used when repository is brand new and has no existing branch ref.
+     */
+    async commitSequentialSubmission(item, commitMsg) {
+      const frontendId = item.frontendId || item.problemId || '0';
+      const title = item.problemTitle || 'Solution';
+      const lang = item.language || 'code';
+      const subId = item.submissionId;
+
+      const solutionMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]`;
+      const solResult = await this.putFile(item.solutionPath, item.code, solutionMsg);
+
+      // Pacing interval to let GitHub ref settle
+      await new Promise(r => setTimeout(r, 800));
+
+      const metaMsg = `LeetCode #${frontendId}: ${title} metadata [Submission #${subId}]`;
+      const metaResult = await this.putFile(item.metadataPath, item.metadataJson, metaMsg);
+
+      return {
+        success: true,
+        solutionSha: solResult?.content?.sha,
+        metadataSha: metaResult?.content?.sha,
+        solutionPath: item.solutionPath,
+        metadataPath: item.metadataPath
+      };
+    }
+
+    /**
+     * Uploads a complete submission: solution file and metadata.json.
+     * Automatically chooses atomic commit via Git Data API (single commit, no race conditions),
+     * and seamlessly overwrites/updates if the problem was previously submitted.
+     *
+     * @param {Object} item - Submission item from queue
+     * @returns {Promise<{ success: boolean, commitSha?: string, solutionSha: string, metadataSha: string }>}
+     */
+    async uploadSubmission(item) {
+      this.validateConfig();
+
+      const frontendId = item.frontendId || item.problemId || '0';
+      const title = item.problemTitle || 'Solution';
+      const lang = item.language || 'code';
+      const subId = item.submissionId;
+      const commitMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]`;
+
+      try {
+        return await this.commitAtomicSubmission(item, commitMsg);
+      } catch (atomicErr) {
+        console.warn(`[LeetCode-Backup] Git Data API commit failed (${atomicErr.message}). Falling back to Contents PUT API...`);
+        return await this.commitSequentialSubmission(item, commitMsg);
+      }
+    }
+
+    /**
+     * Retrieves existing file SHA if present on the target branch
      */
     async getFileSha(filePath) {
-      const cleanPath = filePath.replace(/^\/+/, '');
+      const encodedPath = this._encodePath(filePath);
       const ts = Date.now();
-      const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${cleanPath}?ref=${encodeURIComponent(this.branch)}&_t=${ts}`;
+      const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${encodedPath}?ref=${encodeURIComponent(this.branch)}&_t=${ts}`;
 
       const res = await fetch(url, {
         method: 'GET',
@@ -136,31 +417,22 @@
       }
 
       const errData = await res.json().catch(() => ({}));
-      throw new Error(`Failed to check file "${cleanPath}": ${errData.message || res.statusText}`);
+      throw new Error(`Failed to check file "${filePath}": ${errData.message || res.statusText}`);
     }
 
     /**
-     * Uploads or updates a file in the GitHub repository.
-     * Automatically handles HTTP 409 Conflicts (e.g. branch tip updated or stale SHA)
-     * by fetching the fresh SHA and retrying up to maxRetries times.
-     *
-     * @param {string} filePath - File path in repo
-     * @param {string} content - Raw text content
-     * @param {string} commitMessage - Commit message
-     * @param {number} [maxRetries=3] - Maximum retry attempts on 409 conflict
-     * @returns {Promise<Object>} Commit response
+     * Uploads or updates a single file in the GitHub repository.
      */
     async putFile(filePath, content, commitMessage, maxRetries = 3) {
       this.validateConfig();
-      const cleanPath = filePath.replace(/^\/+/, '');
+      const encodedPath = this._encodePath(filePath);
       const base64Content = utf8ToBase64(content);
-      const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${cleanPath}`;
+      const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${encodedPath}`;
 
       let lastError = null;
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        // Always fetch the freshest SHA right before the PUT request
-        const sha = await this.getFileSha(cleanPath);
+        const sha = await this.getFileSha(filePath);
 
         const payload = {
           message: commitMessage,
@@ -189,63 +461,24 @@
         const data = await res.json().catch(() => ({}));
         const status = res.status;
         const errMsg = data.message || `HTTP ${status}`;
-
-        // 409 Conflict: file sha mismatch or branch ref moved since check
-        // 422 Unprocessable Entity: occasionally returned if sha was required or mismatched
         const isConflict = status === 409 || (status === 422 && errMsg.toLowerCase().includes('sha'));
 
         if (isConflict && attempt < maxRetries) {
           const waitMs = attempt * 600;
-          console.warn(`[LeetCode-Backup] Git 409 Conflict for "${cleanPath}" (attempt ${attempt}/${maxRetries}): ${errMsg}. Refetching fresh SHA and retrying in ${waitMs}ms...`);
+          console.warn(`[LeetCode-Backup] Git 409 Conflict for "${filePath}" (attempt ${attempt}/${maxRetries}): ${errMsg}. Retrying in ${waitMs}ms...`);
           await new Promise(r => setTimeout(r, waitMs));
           continue;
         }
 
-        lastError = new Error(errMsg || `GitHub upload failed for ${cleanPath} (HTTP ${status})`);
+        lastError = new Error(errMsg || `GitHub upload failed for ${filePath} (HTTP ${status})`);
         break;
       }
 
-      throw lastError || new Error(`GitHub upload failed for ${cleanPath}`);
+      throw lastError || new Error(`GitHub upload failed for ${filePath}`);
     }
 
     /**
-     * Uploads a complete submission: solution file and metadata.json
-     * Sequences the commits with a safety interval to avoid 409 branch tip race conditions.
-     *
-     * @param {Object} item - Submission item from queue
-     * @returns {Promise<{ success: boolean, solutionSha: string, metadataSha: string }>}
-     */
-    async uploadSubmission(item) {
-      this.validateConfig();
-
-      const frontendId = item.frontendId || item.problemId || '0';
-      const title = item.problemTitle || 'Solution';
-      const lang = item.language || 'code';
-      const subId = item.submissionId;
-
-      // 1. Upload solution file
-      const solutionMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]`;
-      const solResult = await this.putFile(item.solutionPath, item.code, solutionMsg);
-
-      // Brief pacing pause (600ms) to allow GitHub's git ref & tree to settle
-      // This eliminates 409 Conflict when committing metadata.json immediately after solution
-      await new Promise(r => setTimeout(r, 600));
-
-      // 2. Upload metadata.json
-      const metaMsg = `LeetCode #${frontendId}: ${title} metadata [Submission #${subId}]`;
-      const metaResult = await this.putFile(item.metadataPath, item.metadataJson, metaMsg);
-
-      return {
-        success: true,
-        solutionSha: solResult?.content?.sha,
-        metadataSha: metaResult?.content?.sha,
-        solutionPath: item.solutionPath,
-        metadataPath: item.metadataPath
-      };
-    }
-
-    /**
-     * Processes pending items in the local queue
+     * Processes pending items in the local queue sequentially
      *
      * @param {LocalQueue} localQueue
      * @param {number} [maxBatch=5] - Maximum items to process in one run
@@ -275,6 +508,8 @@
           await localQueue.updateStatus(item.submissionId, 'synced');
           succeeded++;
           console.log(`[LeetCode-Backup] Successfully backed up submission #${item.submissionId} to GitHub.`);
+          // Pacing interval between queued items
+          await new Promise(r => setTimeout(r, 600));
         } catch (err) {
           console.error(`[LeetCode-Backup] Failed to backup submission #${item.submissionId}:`, err);
           await localQueue.updateStatus(item.submissionId, 'failed', { error: err.message });
