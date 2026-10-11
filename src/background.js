@@ -16,7 +16,8 @@ try {
 
 const localQueue = new LocalQueue();
 
-// Sequential lock for queue processing to prevent concurrent git ref conflicts
+// Sequential promise chain to strictly sequence all GitHub commits & prevent race conditions
+let uploadChain = Promise.resolve();
 let isProcessingQueue = false;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -63,7 +64,7 @@ async function getStoredSettings() {
 }
 
 /**
- * Uploads a single submission item to GitHub
+ * Uploads a single submission item to GitHub in sequential order
  */
 async function handleUploadSubmission(item) {
   if (!item || !item.submissionId) {
@@ -85,7 +86,13 @@ async function handleUploadSubmission(item) {
     branch: settings.branch || 'main'
   });
 
-  return await uploader.uploadSubmission(item);
+  const task = async () => {
+    return await uploader.uploadSubmission(item);
+  };
+
+  const chained = uploadChain.then(task, task);
+  uploadChain = chained.catch(() => {});
+  return await chained;
 }
 
 /**
@@ -110,7 +117,13 @@ async function handleProcessQueue(maxBatch = 5) {
       branch: settings.branch || 'main'
     });
 
-    return await uploader.processQueue(localQueue, maxBatch);
+    const task = async () => {
+      return await uploader.processQueue(localQueue, maxBatch);
+    };
+
+    const chained = uploadChain.then(task, task);
+    uploadChain = chained.catch(() => {});
+    return await chained;
   } finally {
     isProcessingQueue = false;
   }

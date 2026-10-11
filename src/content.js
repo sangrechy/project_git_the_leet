@@ -441,6 +441,12 @@
         console.error('[LeetCode-Backup] Upload failed:', uploadErr);
         await localQueue.updateStatus(queuedItem.submissionId, 'failed', { error: uploadErr.message });
 
+        // Remove from in-memory processed set so the user or page can re-attempt uploading
+        processedSubmissionIds.delete(strSubId);
+        if (lastProcessedSubmissionId === strSubId) {
+          lastProcessedSubmissionId = null;
+        }
+
         let displayMsg = uploadErr.message || 'Network error';
         if (displayMsg.includes('Extension context invalidated')) {
           displayMsg = 'Extension reloaded. Please refresh this tab (F5) to complete backup.';
