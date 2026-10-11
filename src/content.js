@@ -234,19 +234,67 @@
   // Submission Processing Logic
   // ==========================================
 
+  function isExtensionValid() {
+    try {
+      return typeof chrome !== 'undefined' && Boolean(chrome.runtime && chrome.runtime.id);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function handleContextInvalidated() {
+    if (urlPollInterval) {
+      clearInterval(urlPollInterval);
+      urlPollInterval = null;
+    }
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+      activeObservedSlug = null;
+    }
+    console.warn('[LeetCode-Backup] Extension context was invalidated (extension reloaded). Please refresh this page (F5) to re-enable auto-sync.');
+  }
+
   /**
    * Retrieves GitHub configuration from storage
    */
   async function getExtensionSettings() {
-    const data = await chrome.storage.local.get('leetcode_backup_settings');
-    return data['leetcode_backup_settings'] || {
-      githubToken: '',
-      repoOwner: '',
-      repoName: '',
-      branch: 'main',
-      syncContests: false,
-      syncPaused: false
-    };
+    if (!isExtensionValid()) {
+      handleContextInvalidated();
+      return {
+        githubToken: '',
+        repoOwner: '',
+        repoName: '',
+        branch: 'main',
+        syncContests: false,
+        syncPaused: false,
+        contextInvalidated: true
+      };
+    }
+    try {
+      const data = await chrome.storage.local.get('leetcode_backup_settings');
+      return data['leetcode_backup_settings'] || {
+        githubToken: '',
+        repoOwner: '',
+        repoName: '',
+        branch: 'main',
+        syncContests: false,
+        syncPaused: false
+      };
+    } catch (e) {
+      if (e.message && e.message.includes('Extension context invalidated')) {
+        handleContextInvalidated();
+      }
+      return {
+        githubToken: '',
+        repoOwner: '',
+        repoName: '',
+        branch: 'main',
+        syncContests: false,
+        syncPaused: false,
+        contextInvalidated: true
+      };
+    }
   }
 
   let activeObservedSlug = null;
@@ -318,6 +366,16 @@
 
       // 2. Check settings for immediate upload
       const settings = await getExtensionSettings();
+
+      if (settings.contextInvalidated) {
+        toastHandle.update(
+          'error',
+          'Refresh Required (F5)',
+          `Extension was updated in browser. Please refresh this tab (F5) to upload submission #${strSubId}.`,
+          8000
+        );
+        return;
+      }
 
       if (settings.syncPaused) {
         toastHandle.update(
@@ -676,6 +734,11 @@
   // ==========================================
 
   async function evaluateCurrentRoute() {
+    if (!isExtensionValid()) {
+      handleContextInvalidated();
+      return;
+    }
+
     const currentUrl = window.location.href;
     const settings = await getExtensionSettings();
     const guardCheck = contestGuard.shouldSync(currentUrl, settings.syncContests);

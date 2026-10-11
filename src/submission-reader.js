@@ -106,9 +106,18 @@
     }
 
     /**
+     * Extracts problem slug from current window location if available
+     */
+    extractSlugFromUrl() {
+      if (typeof window === 'undefined' || !window.location) return null;
+      const match = window.location.href.match(/\/problems\/([a-zA-Z0-9_-]+)/i);
+      return match ? match[1].toLowerCase() : null;
+    }
+
+    /**
      * Sends authenticated GraphQL request to LeetCode
      */
-    async _graphqlQuery(query, variables = {}) {
+    async _graphqlQuery(query, variables = {}, operationName = null) {
       const csrfToken = this.getCsrfToken();
       const headers = {
         'Content-Type': 'application/json',
@@ -119,11 +128,16 @@
         headers['x-csrftoken'] = csrfToken;
       }
 
+      const bodyObj = { query, variables };
+      if (operationName) {
+        bodyObj.operationName = operationName;
+      }
+
       const response = await fetch(this.graphqlUrl, {
         method: 'POST',
         headers,
         credentials: 'include',
-        body: JSON.stringify({ query, variables })
+        body: JSON.stringify(bodyObj)
       });
 
       if (!response.ok) {
@@ -136,6 +150,30 @@
       }
 
       return data.data;
+    }
+
+    /**
+     * Public GraphQL query for question details (does not require session auth)
+     */
+    async fetchQuestionDetails(titleSlug) {
+      if (!titleSlug) return null;
+      const query = `
+        query questionTitle($titleSlug: String!) {
+          question(titleSlug: $titleSlug) {
+            questionId
+            questionFrontendId
+            title
+            titleSlug
+          }
+        }
+      `;
+      try {
+        const data = await this._graphqlQuery(query, { titleSlug }, 'questionTitle');
+        return data?.question || null;
+      } catch (e) {
+        console.warn('[LeetCode-Backup] fetchQuestionDetails query failed:', e.message);
+        return null;
+      }
     }
 
     /**
@@ -242,6 +280,7 @@
             code
             timestamp
             statusCode
+            statusDisplay
             lang {
               name
               verboseName
@@ -262,17 +301,19 @@
         }
       `;
 
+      // 1. Try US GraphQL submissionDetails query
       try {
-        const data = await this._graphqlQuery(queryUS, { submissionId: numId });
+        const data = await this._graphqlQuery(queryUS, { submissionId: numId }, 'submissionDetails');
         const details = data?.submissionDetails;
         if (details && details.code) {
-          return this.normalizeDetails(details, submissionId, fallbackMeta);
+          const normalized = this.normalizeDetails(details, submissionId, fallbackMeta);
+          if (normalized) return normalized;
         }
       } catch (e) {
         console.warn('[LeetCode-Backup] Primary submissionDetails query failed:', e.message);
       }
 
-      // Fallback query for LeetCode CN or alternative schema
+      // 2. Fallback query for LeetCode CN or alternative schema
       const queryCN = `
         query mySubmissionDetail($id: ID!) {
           submissionDetail(submissionId: $id) {
@@ -295,16 +336,29 @@
       `;
 
       try {
-        const dataCN = await this._graphqlQuery(queryCN, { id: String(submissionId) });
+        const dataCN = await this._graphqlQuery(queryCN, { id: String(submissionId) }, 'mySubmissionDetail');
         const detailsCN = dataCN?.submissionDetail;
         if (detailsCN && detailsCN.code) {
-          return this.normalizeDetailsCN(detailsCN, submissionId, fallbackMeta);
+          const normalized = this.normalizeDetailsCN(detailsCN, submissionId, fallbackMeta);
+          if (normalized) return normalized;
         }
       } catch (e) {
         console.warn('[LeetCode-Backup] Fallback CN submissionDetail query failed:', e.message);
       }
 
-      // If GraphQL failed to provide code, attempt REST submission detail endpoint
+      // 3. Fallback: Extract directly from page DOM (foolproof when viewing the submission page!)
+      const targetSlug = fallbackMeta.problemSlug || this.extractSlugFromUrl();
+      try {
+        const domDetails = await this.extractFromPageDom(submissionId, targetSlug, fallbackMeta);
+        if (domDetails && domDetails.code) {
+          console.log(`[LeetCode-Backup] Successfully extracted submission #${submissionId} details directly from page DOM.`);
+          return domDetails;
+        }
+      } catch (domErr) {
+        console.warn('[LeetCode-Backup] DOM extraction fallback error:', domErr.message);
+      }
+
+      // 4. Fallback: REST check endpoint
       try {
         const restUrl = `${this.apiBaseUrl}/submissions/detail/${submissionId}/check/`;
         const res = await fetch(restUrl, { credentials: 'include' });
@@ -319,6 +373,137 @@
       }
 
       throw new Error(`Unable to retrieve code and details for submission ID ${submissionId}`);
+    }
+
+    /**
+     * Extracts submission code and metadata directly from the active LeetCode webpage DOM.
+     * Serves as an infallible fallback if GraphQL is unavailable or restricted.
+     */
+    async extractFromPageDom(submissionId, problemSlug, fallbackMeta = {}) {
+      if (typeof document === 'undefined') return null;
+
+      // 1. Extract submitted source code
+      let code = '';
+
+      // Check Monaco editor DOM lines
+      const monacoEditor = document.querySelector('.monaco-editor');
+      if (monacoEditor) {
+        const viewLines = monacoEditor.querySelectorAll('.view-line');
+        if (viewLines.length > 0) {
+          code = Array.from(viewLines).map(l => l.textContent || '').join('\n');
+        }
+      }
+
+      // Check <code> or <pre> elements
+      if (!code || code.trim().length === 0) {
+        const codeElements = document.querySelectorAll('code, pre');
+        for (const el of codeElements) {
+          const txt = (el.textContent || '').trim();
+          if (txt.length > code.length && !txt.includes('Accepted') && !txt.includes('Runtime:')) {
+            code = el.textContent || '';
+          }
+        }
+      }
+
+      if (!code || code.trim().length === 0) {
+        return null;
+      }
+
+      // 2. Extract programming language
+      let lang = fallbackMeta.lang || '';
+      if (!lang) {
+        const monaco = document.querySelector('[data-mode-id]');
+        if (monaco) {
+          lang = monaco.getAttribute('data-mode-id') || '';
+        }
+      }
+      if (!lang) {
+        const langBtn = document.querySelector('button[id^="headlessui-listbox-button"], [data-cy="lang-select"]');
+        if (langBtn) {
+          lang = (langBtn.textContent || '').trim().toLowerCase();
+        }
+      }
+      if (!lang) {
+        lang = 'python3';
+      }
+
+      // 3. Extract problem metadata using public question query or document.title
+      const slug = problemSlug || fallbackMeta.problemSlug || this.extractSlugFromUrl();
+      let questionData = null;
+      if (slug) {
+        try {
+          questionData = await this.fetchQuestionDetails(slug);
+        } catch (e) {}
+      }
+
+      let frontendId = questionData?.questionFrontendId || questionData?.questionId || fallbackMeta.frontendId;
+      let title = questionData?.title || fallbackMeta.title;
+
+      if (!frontendId || !title) {
+        const docTitle = document.title || '';
+        const titleMatch = docTitle.match(/^(\d+)\.\s*(.+?)(?:\s*-\s*|\s*\|)/);
+        if (titleMatch) {
+          frontendId = frontendId || titleMatch[1];
+          title = title || titleMatch[2];
+        } else {
+          title = title || (slug ? slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'LeetCode Problem');
+          frontendId = frontendId || '0';
+        }
+      }
+
+      // 4. Extract runtime and memory stats from DOM text
+      let runtime = null;
+      let memory = null;
+      let runtimePercentile = null;
+      let memoryPercentile = null;
+
+      const statText = document.body ? document.body.innerText : '';
+      const runtimeMatch = statText.match(/(\d+(?:\.\d+)?\s*ms)/i);
+      if (runtimeMatch) runtime = runtimeMatch[1];
+      const memMatch = statText.match(/(\d+(?:\.\d+)?\s*MB)/i);
+      if (memMatch) memory = memMatch[1];
+      const percMatches = statText.match(/Beats\s+(\d+(?:\.\d+)?%)/gi);
+      if (percMatches && percMatches.length > 0) {
+        runtimePercentile = percMatches[0].replace(/Beats\s+/i, '');
+        if (percMatches.length > 1) {
+          memoryPercentile = percMatches[1].replace(/Beats\s+/i, '');
+        }
+      }
+
+      const paths = this.buildPaths(frontendId, slug, lang);
+      const timestamp = Math.floor(Date.now() / 1000);
+
+      const metadata = {
+        submission_id: String(submissionId),
+        problem_id: String(frontendId),
+        frontend_id: String(frontendId),
+        problem_title: title,
+        problem_slug: slug,
+        language: lang,
+        timestamp,
+        submitted_at: new Date(timestamp * 1000).toISOString(),
+        result: 'Accepted',
+        runtime: runtime || null,
+        runtime_percentile: runtimePercentile || null,
+        memory: memory || null,
+        memory_percentile: memoryPercentile || null,
+        problem_url: `https://${this.domain}/problems/${slug}/`
+      };
+
+      return {
+        submissionId: String(submissionId),
+        frontendId: String(frontendId),
+        problemTitle: title,
+        problemSlug: slug,
+        language: lang,
+        code,
+        extension: paths.extension,
+        folderName: paths.folderName,
+        solutionPath: paths.solutionPath,
+        metadataPath: paths.metadataPath,
+        metadata,
+        metadataJson: JSON.stringify(metadata, null, 2) + '\n'
+      };
     }
 
     /**

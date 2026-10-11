@@ -18,7 +18,15 @@
 
   class LocalQueue {
     constructor() {
-      this.storage = chrome.storage.local;
+      this.storage = typeof chrome !== 'undefined' && chrome.storage ? chrome.storage.local : null;
+    }
+
+    _isContextValid() {
+      try {
+        return typeof chrome !== 'undefined' && Boolean(chrome.runtime && chrome.runtime.id);
+      } catch (e) {
+        return false;
+      }
     }
 
     /**
@@ -26,8 +34,13 @@
      * @returns {Promise<Array>}
      */
     async getQueue() {
-      const data = await this.storage.get(STORAGE_KEYS.QUEUE);
-      return Array.isArray(data[STORAGE_KEYS.QUEUE]) ? data[STORAGE_KEYS.QUEUE] : [];
+      if (!this._isContextValid() || !this.storage) return [];
+      try {
+        const data = await this.storage.get(STORAGE_KEYS.QUEUE);
+        return Array.isArray(data[STORAGE_KEYS.QUEUE]) ? data[STORAGE_KEYS.QUEUE] : [];
+      } catch (e) {
+        return [];
+      }
     }
 
     /**
@@ -35,8 +48,13 @@
      * @returns {Promise<string[]>}
      */
     async getSyncedIds() {
-      const data = await this.storage.get(STORAGE_KEYS.SYNCED_IDS);
-      return Array.isArray(data[STORAGE_KEYS.SYNCED_IDS]) ? data[STORAGE_KEYS.SYNCED_IDS] : [];
+      if (!this._isContextValid() || !this.storage) return [];
+      try {
+        const data = await this.storage.get(STORAGE_KEYS.SYNCED_IDS);
+        return Array.isArray(data[STORAGE_KEYS.SYNCED_IDS]) ? data[STORAGE_KEYS.SYNCED_IDS] : [];
+      } catch (e) {
+        return [];
+      }
     }
 
     /**
@@ -45,16 +63,20 @@
      * @returns {Promise<boolean>}
      */
     async isDuplicate(submissionId) {
-      if (!submissionId) return false;
+      if (!submissionId || !this._isContextValid()) return false;
       const strId = String(submissionId);
 
-      const [syncedIds, queue] = await Promise.all([
-        this.getSyncedIds(),
-        this.getQueue()
-      ]);
+      try {
+        const [syncedIds, queue] = await Promise.all([
+          this.getSyncedIds(),
+          this.getQueue()
+        ]);
 
-      if (syncedIds.includes(strId)) return true;
-      return queue.some(item => String(item.submissionId) === strId);
+        if (syncedIds.includes(strId)) return true;
+        return queue.some(item => String(item.submissionId) === strId);
+      } catch (e) {
+        return false;
+      }
     }
 
     /**
@@ -103,7 +125,11 @@
 
       // Add to front of queue
       queue.unshift(newItem);
-      await this.storage.set({ [STORAGE_KEYS.QUEUE]: queue });
+      if (this.storage && this._isContextValid()) {
+        try {
+          await this.storage.set({ [STORAGE_KEYS.QUEUE]: queue });
+        } catch (e) {}
+      }
 
       console.log(`[LeetCode-Backup] Queued submission #${submissionId} (${newItem.solutionPath}) as pending.`);
       return newItem;
@@ -134,7 +160,11 @@
         const syncedIds = await this.getSyncedIds();
         if (!syncedIds.includes(strId)) {
           syncedIds.push(strId);
-          await this.storage.set({ [STORAGE_KEYS.SYNCED_IDS]: syncedIds });
+          if (this.storage && this._isContextValid()) {
+            try {
+              await this.storage.set({ [STORAGE_KEYS.SYNCED_IDS]: syncedIds });
+            } catch (e) {}
+          }
         }
       } else if (status === 'failed') {
         item.lastError = extra.error || 'Upload failed';
@@ -143,7 +173,11 @@
         item.lastError = null;
       }
 
-      await this.storage.set({ [STORAGE_KEYS.QUEUE]: queue });
+      if (this.storage && this._isContextValid()) {
+        try {
+          await this.storage.set({ [STORAGE_KEYS.QUEUE]: queue });
+        } catch (e) {}
+      }
       return item;
     }
 
