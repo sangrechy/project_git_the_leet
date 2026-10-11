@@ -58,6 +58,8 @@
   const settingRepo = document.getElementById('setting-repo');
   const settingBranch = document.getElementById('setting-branch');
   const settingContests = document.getElementById('setting-contests');
+  const cardToggleContests = document.getElementById('card-toggle-contests');
+  const switchContests = document.getElementById('switch-contests');
   const btnToggleToken = document.getElementById('btn-toggle-token');
   const btnTestConnection = document.getElementById('btn-test-connection');
   const settingsAlert = document.getElementById('settings-alert');
@@ -449,6 +451,16 @@
     settingRepo.value = settings.repoName || '';
     settingBranch.value = settings.branch || 'main';
     settingContests.checked = Boolean(settings.syncContests);
+    if (switchContests) {
+      switchContests.classList.toggle('checked', settingContests.checked);
+    }
+  }
+
+  if (cardToggleContests && switchContests) {
+    cardToggleContests.addEventListener('click', () => {
+      settingContests.checked = !settingContests.checked;
+      switchContests.classList.toggle('checked', settingContests.checked);
+    });
   }
 
   btnToggleToken.addEventListener('click', () => {

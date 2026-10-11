@@ -10,7 +10,9 @@
   <!-- Header -->
   <header class="app-header">
     <div class="brand">
-      <img src="../../icons/icon-32.png" alt="Icon" class="brand-icon">
+      <div class="brand-icon-wrap" title="LeetCode to GitHub Backup">
+        <img src="../../icons/icon-48.png" alt="LeetCode Backup" class="brand-icon">
+      </div>
       <div class="brand-title">
         LeetCode Sync
         <span class="tag">Backup</span>
@@ -24,7 +26,7 @@
     </div>
   </header>
 
-  <!-- Tab Navigation -->
+  <!-- Tab Navigation: Recessed Segmented Track -->
   <nav class="tabs-nav">
     <button class="tab-btn active" data-tab="queue">
       Queue
@@ -111,11 +113,11 @@
           </div>
         </div>
 
-        <button id="btn-start-backfill" class="btn-primary" style="margin-top: 8px;">
+        <button id="btn-start-backfill" class="btn-primary" style="margin-top: 10px;">
           🚀 Start Gradual Backfill
         </button>
 
-        <button id="btn-pause-backfill" class="btn-secondary" style="display: none; margin-top: 8px;">
+        <button id="btn-pause-backfill" class="btn-secondary" style="display: none; margin-top: 10px;">
           ⏸ Pause Backfill
         </button>
       </div>
@@ -176,14 +178,18 @@
         <input type="text" id="setting-branch" class="form-input" placeholder="main" value="main">
       </div>
 
-      <div class="checkbox-group">
-        <input type="checkbox" id="setting-contests">
-        <div class="checkbox-content">
-          <span class="checkbox-title">Sync Contest Submissions</span>
-          <span class="checkbox-desc">
+      <!-- Tactile Toggle Switch for Contest Submissions -->
+      <div class="tactile-toggle-card" id="card-toggle-contests">
+        <div class="toggle-info">
+          <span class="toggle-title">Sync Contest Submissions</span>
+          <span class="toggle-desc">
             Contest pages are strictly excluded by default to avoid interfering with live competitions.
           </span>
         </div>
+        <div class="switch-nm" id="switch-contests">
+          <div class="switch-handle"></div>
+        </div>
+        <input type="checkbox" id="setting-contests" style="display: none;">
       </div>
 
       <button type="button" id="btn-test-connection" class="btn-secondary">

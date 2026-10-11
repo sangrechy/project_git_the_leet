@@ -53,6 +53,24 @@
 
       const style = document.createElement('style');
       style.textContent = `
+        :host {
+          --nm-bg: #e0e5ec;
+          --nm-text: #2d3748;
+          --nm-text-muted: #718096;
+          --nm-shadow-light: #ffffff;
+          --nm-shadow-dark: #a3b1c6;
+          --nm-accent: #6b46c1;
+        }
+        @media (prefers-color-scheme: dark) {
+          :host {
+            --nm-bg: #24272c;
+            --nm-text: #f1f5f9;
+            --nm-text-muted: #9ba1a6;
+            --nm-shadow-light: #2f333a;
+            --nm-shadow-dark: #191b1e;
+            --nm-accent: #8b5cf6;
+          }
+        }
         .toast-container {
           position: fixed;
           bottom: 24px;
@@ -60,23 +78,22 @@
           z-index: 2147483647;
           display: flex;
           flex-direction: column;
-          gap: 10px;
+          gap: 12px;
           pointer-events: none;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+          font-family: 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
         .toast {
           pointer-events: auto;
-          min-width: 300px;
+          min-width: 310px;
           max-width: 420px;
-          padding: 12px 16px;
-          border-radius: 8px;
-          background-color: #1e293b;
-          color: #f8fafc;
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
-          border: 1px solid #334155;
+          padding: 14px 18px;
+          border-radius: 18px;
+          background-color: var(--nm-bg);
+          color: var(--nm-text);
+          box-shadow: 8px 8px 18px var(--nm-shadow-dark), -8px -8px 18px var(--nm-shadow-light);
           display: flex;
           align-items: center;
-          gap: 12px;
+          gap: 14px;
           font-size: 13px;
           line-height: 1.4;
           opacity: 0;
@@ -87,36 +104,38 @@
           opacity: 1;
           transform: translateY(0);
         }
-        .toast-icon {
-          flex-shrink: 0;
-          width: 20px;
-          height: 20px;
+        .toast-icon-wrap {
+          width: 34px;
+          height: 34px;
+          border-radius: 50%;
+          background: var(--nm-bg);
+          box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -2px -2px 5px var(--nm-shadow-light);
           display: flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
         }
         .toast-body {
           flex-grow: 1;
         }
         .toast-title {
-          font-weight: 600;
-          color: #f1f5f9;
+          font-weight: 700;
+          color: var(--nm-text);
           margin-bottom: 2px;
+          font-size: 13px;
         }
         .toast-msg {
-          color: #94a3b8;
+          color: var(--nm-text-muted);
           word-break: break-word;
+          font-size: 12px;
         }
-        .toast.success .toast-title { color: #34d399; }
-        .toast.success { border-color: #059669; }
-        .toast.error .toast-title { color: #f87171; }
-        .toast.error { border-color: #dc2626; }
-        .toast.info .toast-title { color: #60a5fa; }
-        .toast.info { border-color: #2563eb; }
+        .toast.success .toast-title { color: #10b981; }
+        .toast.error .toast-title { color: #ef4444; }
+        .toast.info .toast-title { color: var(--nm-accent); }
         .spinner {
           width: 16px;
           height: 16px;
-          border: 2px solid #38bdf8;
+          border: 2px solid var(--nm-accent);
           border-top-color: transparent;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
@@ -161,7 +180,7 @@
       }
 
       toast.innerHTML = `
-        <div class="toast-icon">${iconHtml}</div>
+        <div class="toast-icon-wrap">${iconHtml}</div>
         <div class="toast-body">
           <div class="toast-title">${title}</div>
           <div class="toast-msg">${message}</div>
@@ -191,9 +210,9 @@
           if (newType === 'loading') newIcon = '<div class="spinner"></div>';
           else if (newType === 'success') newIcon = '<span style="color:#10b981;font-weight:bold;font-size:16px;">✓</span>';
           else if (newType === 'error') newIcon = '<span style="color:#ef4444;font-weight:bold;font-size:16px;">✕</span>';
-          else newIcon = '<span style="color:#38bdf8;font-weight:bold;font-size:16px;">ℹ</span>';
+          else newIcon = '<span style="color:var(--nm-accent);font-weight:bold;font-size:16px;">ℹ</span>';
 
-          const iconEl = toast.querySelector('.toast-icon');
+          const iconEl = toast.querySelector('.toast-icon-wrap');
           const titleEl = toast.querySelector('.toast-title');
           const msgEl = toast.querySelector('.toast-msg');
           if (iconEl) iconEl.innerHTML = newIcon;
