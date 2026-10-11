@@ -151,16 +151,15 @@
         const history = await this.fetchSubmissionHistory(0, limit);
         if (history && history.submissions && history.submissions.length > 0) {
           const nowSeconds = Math.floor(Date.now() / 1000);
-          // Look for an accepted submission that is recent (last 15 mins) or matches the problem slug
+          // Look for an accepted submission that matches the problem slug or is recent
           const accepted = history.submissions.find(s => {
             if (s.statusDisplay !== 'Accepted') return false;
-            const isRecent = s.timestamp && (nowSeconds - s.timestamp < 900);
-            const matchesSlug = problemSlug && s.titleSlug && (
-              s.titleSlug === problemSlug ||
-              problemSlug.includes(s.titleSlug) ||
-              s.titleSlug.includes(problemSlug)
-            );
-            return isRecent || matchesSlug;
+            if (problemSlug && s.titleSlug) {
+              const cleanA = problemSlug.toLowerCase().replace(/[^a-z0-9]/g, '');
+              const cleanB = s.titleSlug.toLowerCase().replace(/[^a-z0-9]/g, '');
+              return cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA);
+            }
+            return s.timestamp && (nowSeconds - s.timestamp < 900);
           });
 
           if (accepted) {
@@ -333,6 +332,18 @@
       const lang = details.lang?.name || details.lang?.verboseName || fallbackMeta.lang || 'python3';
       const timestamp = details.timestamp || Math.floor(Date.now() / 1000);
       const paths = this.buildPaths(frontendId, slug, lang);
+
+      // Only process Accepted submissions
+      const statusCode = details.statusCode;
+      const statusDisplay = details.statusDisplay || fallbackMeta.statusDisplay;
+      if (statusCode && statusCode !== 10) {
+        console.log(`[LeetCode-Backup] Submission #${submissionId} statusCode is ${statusCode} (not Accepted). Skipping.`);
+        return null;
+      }
+      if (statusDisplay && statusDisplay !== 'Accepted') {
+        console.log(`[LeetCode-Backup] Submission #${submissionId} status is "${statusDisplay}" (not Accepted). Skipping.`);
+        return null;
+      }
 
       const metadata = {
         submission_id: String(submissionId),

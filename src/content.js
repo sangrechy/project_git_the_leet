@@ -249,6 +249,9 @@
     };
   }
 
+  let activeObservedSlug = null;
+  const processedSubmissionIds = new Set();
+
   /**
    * Called when an "Accepted" submission is detected on the page
    * @param {string} [slug] - Optional problem slug
@@ -264,7 +267,7 @@
 
       let submission = null;
       if (specificSubmissionId) {
-        console.log(`[LeetCode-Backup] Directly fetching details for intercepted submission #${specificSubmissionId}`);
+        console.log(`[LeetCode-Backup] Directly fetching details for submission #${specificSubmissionId}`);
         try {
           submission = await submissionReader.getSubmissionDetails(specificSubmissionId, {
             problemSlug
@@ -285,25 +288,29 @@
         return;
       }
 
-      if (submission.submissionId === lastProcessedSubmissionId) {
-        console.log(`[LeetCode-Backup] Submission #${submission.submissionId} already handled.`);
+      const strSubId = String(submission.submissionId);
+
+      if (strSubId === lastProcessedSubmissionId || processedSubmissionIds.has(strSubId)) {
+        console.log(`[LeetCode-Backup] Submission #${strSubId} already handled.`);
         return;
       }
 
-      const isDup = await localQueue.isDuplicate(submission.submissionId);
+      const isDup = await localQueue.isDuplicate(strSubId);
       if (isDup) {
-        console.log(`[LeetCode-Backup] Submission #${submission.submissionId} is already in queue or synced.`);
-        lastProcessedSubmissionId = submission.submissionId;
+        console.log(`[LeetCode-Backup] Submission #${strSubId} is already in queue or synced.`);
+        lastProcessedSubmissionId = strSubId;
+        processedSubmissionIds.add(strSubId);
         return;
       }
 
-      lastProcessedSubmissionId = submission.submissionId;
+      lastProcessedSubmissionId = strSubId;
+      processedSubmissionIds.add(strSubId);
 
       // 1. Save locally as pending
       const toastHandle = toasts.show(
         'loading',
         'LeetCode Backup',
-        `Accepted solution #${submission.submissionId} detected. Saving locally...`,
+        `Accepted solution #${strSubId} detected. Saving locally...`,
         0
       );
 
@@ -316,7 +323,7 @@
         toastHandle.update(
           'info',
           'Queued Locally',
-          `Solution #${submission.submissionId} saved. Sync is currently paused.`,
+          `Solution #${strSubId} saved. Sync is currently paused.`,
           5000
         );
         return;
@@ -374,8 +381,81 @@
       // Release processing lock after brief cooldown
       setTimeout(() => {
         isProcessingSubmission = false;
-      }, 2500);
+      }, 2000);
     }
+  }
+
+  /**
+   * Verifies whether a candidate submission ID is Accepted (via DOM or API)
+   * and triggers backup if verified.
+   */
+  async function checkAndProcessUrlSubmission(problemSlug, submissionId) {
+    const strId = String(submissionId);
+    if (processedSubmissionIds.has(strId)) return;
+    if (strId === lastProcessedSubmissionId) return;
+
+    // Check if duplicate in storage
+    const isDup = await localQueue.isDuplicate(strId);
+    if (isDup) {
+      processedSubmissionIds.add(strId);
+      lastProcessedSubmissionId = strId;
+      return;
+    }
+
+    console.log(`[LeetCode-Backup] Submission #${strId} detected in URL. Verifying Accepted status...`);
+
+    // Poll for status: check DOM first, then fallback to API
+    let attempts = 0;
+    const maxAttempts = 20; // 20 * 400ms = 8 seconds
+    const interval = setInterval(async () => {
+      attempts++;
+
+      // Check DOM result
+      const resultElements = document.querySelectorAll(
+        '[data-e2e-locator="submission-result"], [class*="text-green"], [class*="text-olive"], [class*="text-emerald"], [class*="text-success"]'
+      );
+      for (const el of resultElements) {
+        const txt = (el.textContent || '').trim();
+        if (txt === 'Accepted' || txt.startsWith('Accepted')) {
+          clearInterval(interval);
+          console.log(`[LeetCode-Backup] URL submission #${strId} verified as Accepted in DOM.`);
+          handleAcceptedSubmission(problemSlug, strId);
+          return;
+        }
+        if (
+          txt &&
+          (txt.includes('Wrong Answer') ||
+            txt.includes('Time Limit') ||
+            txt.includes('Runtime Error') ||
+            txt.includes('Compile Error') ||
+            txt.includes('Memory Limit'))
+        ) {
+          clearInterval(interval);
+          processedSubmissionIds.add(strId);
+          console.log(`[LeetCode-Backup] URL submission #${strId} verified as not accepted (${txt}). Skipping.`);
+          return;
+        }
+      }
+
+      // If DOM hasn't resolved after ~2.4s, query authenticated API directly
+      if (attempts === 6 || attempts === 12 || attempts === maxAttempts) {
+        try {
+          const details = await submissionReader.getSubmissionDetails(strId, { problemSlug });
+          if (details && details.submissionId) {
+            clearInterval(interval);
+            console.log(`[LeetCode-Backup] URL submission #${strId} verified as Accepted via LeetCode API!`);
+            handleAcceptedSubmission(problemSlug, strId);
+            return;
+          }
+        } catch (e) {
+          // If details query failed or was not accepted, keep polling
+        }
+      }
+
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 400);
   }
 
   // ==========================================
@@ -399,7 +479,8 @@
     }
 
     // Look for data-e2e-locator or standard submission result markers
-    const submissionResult = node.querySelector?.('[data-e2e-locator="submission-result"]') ||
+    const submissionResult =
+      node.querySelector?.('[data-e2e-locator="submission-result"]') ||
       (node.getAttribute?.('data-e2e-locator') === 'submission-result' ? node : null);
 
     if (submissionResult) {
@@ -408,7 +489,9 @@
     }
 
     // Modern LeetCode dynamic layout result text (green "Accepted" state)
-    const acceptedElements = node.querySelectorAll?.('[class*="text-green"], [class*="text-olive"], [class*="text-success"], [class*="text-emerald"], [data-e2e-locator="submission-result"]');
+    const acceptedElements = node.querySelectorAll?.(
+      '[class*="text-green"], [class*="text-olive"], [class*="text-success"], [class*="text-emerald"], [data-e2e-locator="submission-result"]'
+    );
     if (acceptedElements && acceptedElements.length > 0) {
       for (const el of acceptedElements) {
         const txt = (el.textContent || '').trim();
@@ -422,15 +505,28 @@
   }
 
   /**
-   * Initializes DOM MutationObserver on practice problem page
+   * Initializes DOM MutationObserver on practice problem page.
+   * Does NOT disconnect existing observer if already observing the same problem slug.
    */
   function startSubmissionObserver(problemSlug) {
+    if (activeObserver && activeObservedSlug === problemSlug) {
+      return; // Already observing this problem slug
+    }
+
     if (activeObserver) {
       activeObserver.disconnect();
       activeObserver = null;
     }
 
+    activeObservedSlug = problemSlug;
     console.log(`[LeetCode-Backup] Starting submission observer for practice problem: ${problemSlug}`);
+
+    // Immediately inspect existing DOM in case "Accepted" is already rendered!
+    const existingResult = document.querySelector('[data-e2e-locator="submission-result"]');
+    if (existingResult && checkForAcceptedResult(existingResult)) {
+      const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+      handleAcceptedSubmission(problemSlug, urlSubId);
+    }
 
     activeObserver = new MutationObserver((mutations) => {
       if (isProcessingSubmission) return;
@@ -439,13 +535,15 @@
         if (mutation.type === 'childList') {
           for (const addedNode of mutation.addedNodes) {
             if (checkForAcceptedResult(addedNode)) {
-              handleAcceptedSubmission(problemSlug);
+              const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+              handleAcceptedSubmission(problemSlug, urlSubId);
               return;
             }
           }
         } else if (mutation.type === 'characterData') {
           if ((mutation.target.nodeValue || '').trim() === 'Accepted') {
-            handleAcceptedSubmission(problemSlug);
+            const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+            handleAcceptedSubmission(problemSlug, urlSubId);
             return;
           }
         }
@@ -462,6 +560,16 @@
   // Listen for network interception messages from src/interceptor.js
   window.addEventListener('message', async (event) => {
     if (event.source !== window || !event.data) return;
+
+    if (event.data.type === 'LEETCODE_SUBMISSION_STARTED' && event.data.submissionId) {
+      const currentUrl = window.location.href;
+      const slug = contestGuard.extractProblemSlug(currentUrl);
+      if (slug) {
+        console.log(`[LeetCode-Backup] Submission #${event.data.submissionId} initiated. Arming verification...`);
+        checkAndProcessUrlSubmission(slug, event.data.submissionId);
+      }
+    }
+
     if (event.data.type === 'LEETCODE_SUBMISSION_ACCEPTED' && event.data.submissionId) {
       const currentUrl = window.location.href;
       const settings = await getExtensionSettings();
@@ -482,7 +590,7 @@
       const slug = contestGuard.extractProblemSlug(window.location.href);
       if (slug) {
         console.log('[LeetCode-Backup] Submit shortcut (Ctrl/Cmd+Enter) detected. Arming result monitor...');
-        pollForResult(slug, 20);
+        pollForResult(slug, 25);
       }
     }
   }, true);
@@ -502,13 +610,13 @@
       const slug = contestGuard.extractProblemSlug(window.location.href);
       if (slug) {
         console.log('[LeetCode-Backup] Submit button clicked. Arming result monitor...');
-        pollForResult(slug, 20);
+        pollForResult(slug, 25);
       }
     }
   }, true);
 
   /**
-   * Periodic polling after submit to catch submission completion via DOM or REST API
+   * Periodic polling after submit to catch submission completion via URL, DOM or REST API
    */
   function pollForResult(problemSlug, remainingTries) {
     if (remainingTries <= 0 || isProcessingSubmission) return;
@@ -516,7 +624,13 @@
     setTimeout(async () => {
       if (isProcessingSubmission) return;
 
-      // 1. Scan page for Accepted
+      // 1. Check URL for submission ID
+      const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+      if (urlSubId) {
+        checkAndProcessUrlSubmission(problemSlug, urlSubId);
+      }
+
+      // 2. Scan page for Accepted
       const resultElements = document.querySelectorAll(
         '[data-e2e-locator="submission-result"], [class*="text-green"], [class*="text-olive"], [class*="text-emerald"], [class*="text-success"]'
       );
@@ -524,12 +638,12 @@
         const txt = (el.textContent || '').trim();
         if (txt === 'Accepted' || txt.startsWith('Accepted')) {
           console.log('[LeetCode-Backup] Detected "Accepted" in DOM during poll.');
-          handleAcceptedSubmission(problemSlug);
+          handleAcceptedSubmission(problemSlug, urlSubId);
           return;
         }
       }
 
-      // 2. Every 3rd try (every ~4.5s), check authenticated REST API
+      // 3. Every 3rd try (every ~3s), check authenticated REST API
       if (remainingTries % 3 === 0) {
         try {
           const latest = await submissionReader.getLatestAcceptedSubmission(problemSlug, 3);
@@ -542,7 +656,7 @@
       }
 
       pollForResult(problemSlug, remainingTries - 1);
-    }, 1500);
+    }, 1000);
   }
 
   /**
@@ -552,6 +666,7 @@
     if (activeObserver) {
       activeObserver.disconnect();
       activeObserver = null;
+      activeObservedSlug = null;
       console.log('[LeetCode-Backup] Submission observer disconnected.');
     }
   }
@@ -562,20 +677,30 @@
 
   async function evaluateCurrentRoute() {
     const currentUrl = window.location.href;
-    if (currentUrl === lastCheckedUrl) return;
-    lastCheckedUrl = currentUrl;
-
     const settings = await getExtensionSettings();
     const guardCheck = contestGuard.shouldSync(currentUrl, settings.syncContests);
 
     if (guardCheck.isContest && !settings.syncContests) {
-      console.log(`[LeetCode-Backup] Contest guard active: URL is a contest page (${currentUrl}). All sync & observers stopped.`);
-      stopSubmissionObserver();
+      if (activeObserver) {
+        console.log(`[LeetCode-Backup] Contest guard active: URL is a contest page (${currentUrl}). All sync & observers stopped.`);
+        stopSubmissionObserver();
+      }
       return;
     }
 
     if (guardCheck.isPractice && guardCheck.slug) {
-      startSubmissionObserver(guardCheck.slug);
+      const problemSlug = guardCheck.slug;
+
+      // Keep observer alive; only restart if problem slug changed
+      if (activeObservedSlug !== problemSlug) {
+        startSubmissionObserver(problemSlug);
+      }
+
+      // Check if URL contains an explicit submission ID (/problems/<slug>/submissions/<id>/)
+      const submissionId = contestGuard.extractSubmissionId(currentUrl);
+      if (submissionId) {
+        checkAndProcessUrlSubmission(problemSlug, submissionId);
+      }
     } else {
       stopSubmissionObserver();
     }
@@ -600,12 +725,16 @@
     evaluateCurrentRoute();
   });
 
-  window.addEventListener('__lc_url_changed__', () => {
-    setTimeout(evaluateCurrentRoute, 100);
+  window.addEventListener('hashchange', () => {
+    evaluateCurrentRoute();
   });
 
-  // Fail-safe URL poll for SPA changes every 1.5s
-  urlPollInterval = setInterval(evaluateCurrentRoute, 1500);
+  window.addEventListener('__lc_url_changed__', () => {
+    setTimeout(evaluateCurrentRoute, 50);
+  });
+
+  // Fail-safe URL poll for SPA changes every 500ms
+  urlPollInterval = setInterval(evaluateCurrentRoute, 500);
 
   // Initial evaluation
   evaluateCurrentRoute();

@@ -78,6 +78,25 @@
     },
 
     /**
+     * Extracts the submission ID from a LeetCode submission URL if present
+     * e.g. /problems/two-sum/submissions/123456789/ or /submissions/detail/123456789/
+     *
+     * @param {string} url - LeetCode URL
+     * @returns {string|null} - Submission ID or null
+     */
+    extractSubmissionId(url) {
+      if (!url || typeof url !== 'string') return null;
+      try {
+        const parsed = new URL(url, 'https://leetcode.com');
+        const match = parsed.pathname.match(/\/submissions\/(?:detail\/)?(\d+)/i);
+        return match ? match[1] : null;
+      } catch (e) {
+        const match = url.match(/\/submissions\/(?:detail\/)?(\d+)/i);
+        return match ? match[1] : null;
+      }
+    },
+
+    /**
      * Determines whether syncing should be allowed for a given URL
      *
      * @param {string} url - Current page URL

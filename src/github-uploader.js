@@ -108,17 +108,23 @@
 
     /**
      * Retrieves existing file SHA if present on the target branch
+     * Uses cache-busting timestamp and headers to avoid CDN stale reads.
      *
      * @param {string} filePath - Path in repository (e.g. "leetcode_problem/0001-two-sum/solution.py")
      * @returns {Promise<string|null>} File SHA or null if not found
      */
     async getFileSha(filePath) {
       const cleanPath = filePath.replace(/^\/+/, '');
-      const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${cleanPath}?ref=${encodeURIComponent(this.branch)}`;
+      const ts = Date.now();
+      const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${cleanPath}?ref=${encodeURIComponent(this.branch)}&_t=${ts}`;
 
       const res = await fetch(url, {
         method: 'GET',
-        headers: this._getHeaders()
+        headers: {
+          ...this._getHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
       });
 
       if (res.status === 200) {
@@ -134,46 +140,77 @@
     }
 
     /**
-     * Uploads or updates a file in the GitHub repository
+     * Uploads or updates a file in the GitHub repository.
+     * Automatically handles HTTP 409 Conflicts (e.g. branch tip updated or stale SHA)
+     * by fetching the fresh SHA and retrying up to maxRetries times.
      *
      * @param {string} filePath - File path in repo
      * @param {string} content - Raw text content
      * @param {string} commitMessage - Commit message
+     * @param {number} [maxRetries=3] - Maximum retry attempts on 409 conflict
      * @returns {Promise<Object>} Commit response
      */
-    async putFile(filePath, content, commitMessage) {
+    async putFile(filePath, content, commitMessage, maxRetries = 3) {
       this.validateConfig();
       const cleanPath = filePath.replace(/^\/+/, '');
-      const sha = await this.getFileSha(cleanPath);
       const base64Content = utf8ToBase64(content);
-
       const url = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/contents/${cleanPath}`;
-      const payload = {
-        message: commitMessage,
-        content: base64Content,
-        branch: this.branch
-      };
 
-      if (sha) {
-        payload.sha = sha;
+      let lastError = null;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        // Always fetch the freshest SHA right before the PUT request
+        const sha = await this.getFileSha(cleanPath);
+
+        const payload = {
+          message: commitMessage,
+          content: base64Content,
+          branch: this.branch
+        };
+
+        if (sha) {
+          payload.sha = sha;
+        }
+
+        const res = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            ...this._getHeaders(),
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+          return await res.json();
+        }
+
+        const data = await res.json().catch(() => ({}));
+        const status = res.status;
+        const errMsg = data.message || `HTTP ${status}`;
+
+        // 409 Conflict: file sha mismatch or branch ref moved since check
+        // 422 Unprocessable Entity: occasionally returned if sha was required or mismatched
+        const isConflict = status === 409 || (status === 422 && errMsg.toLowerCase().includes('sha'));
+
+        if (isConflict && attempt < maxRetries) {
+          const waitMs = attempt * 600;
+          console.warn(`[LeetCode-Backup] Git 409 Conflict for "${cleanPath}" (attempt ${attempt}/${maxRetries}): ${errMsg}. Refetching fresh SHA and retrying in ${waitMs}ms...`);
+          await new Promise(r => setTimeout(r, waitMs));
+          continue;
+        }
+
+        lastError = new Error(errMsg || `GitHub upload failed for ${cleanPath} (HTTP ${status})`);
+        break;
       }
 
-      const res = await fetch(url, {
-        method: 'PUT',
-        headers: this._getHeaders(),
-        body: JSON.stringify(payload)
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || `GitHub upload failed for ${cleanPath} (HTTP ${res.status})`);
-      }
-
-      return data;
+      throw lastError || new Error(`GitHub upload failed for ${cleanPath}`);
     }
 
     /**
      * Uploads a complete submission: solution file and metadata.json
+     * Sequences the commits with a safety interval to avoid 409 branch tip race conditions.
      *
      * @param {Object} item - Submission item from queue
      * @returns {Promise<{ success: boolean, solutionSha: string, metadataSha: string }>}
@@ -189,6 +226,10 @@
       // 1. Upload solution file
       const solutionMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]`;
       const solResult = await this.putFile(item.solutionPath, item.code, solutionMsg);
+
+      // Brief pacing pause (600ms) to allow GitHub's git ref & tree to settle
+      // This eliminates 409 Conflict when committing metadata.json immediately after solution
+      await new Promise(r => setTimeout(r, 600));
 
       // 2. Upload metadata.json
       const metaMsg = `LeetCode #${frontendId}: ${title} metadata [Submission #${subId}]`;
