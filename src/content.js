@@ -1,0 +1,535 @@
+/**
+ * Content Script for LeetCode Backup Extension
+ *
+ * Runs on LeetCode pages, enforces contest guard exclusions,
+ * observes submission outcomes, captures accepted solutions,
+ * enqueues them locally, and initiates GitHub backup.
+ */
+
+(function () {
+  'use strict';
+
+  // Guard against double injection
+  if (window.__LEETCODE_BACKUP_CONTENT_LOADED__) return;
+  window.__LEETCODE_BACKUP_CONTENT_LOADED__ = true;
+
+  const contestGuard = window.ContestGuard || globalThis.ContestGuard;
+  const SubmissionReaderClass = window.SubmissionReader || globalThis.SubmissionReader;
+  const LocalQueueClass = window.LocalQueue || globalThis.LocalQueue;
+  const GitHubUploaderClass = window.GitHubUploader || globalThis.GitHubUploader;
+
+  if (!contestGuard || !SubmissionReaderClass || !LocalQueueClass || !GitHubUploaderClass) {
+    console.error('[LeetCode-Backup] Required modules are missing. Content script halted.');
+    return;
+  }
+
+  const submissionReader = new SubmissionReaderClass();
+  const localQueue = new LocalQueueClass();
+
+  let activeObserver = null;
+  let lastCheckedUrl = '';
+  let isProcessingSubmission = false;
+  let lastProcessedSubmissionId = null;
+  let urlPollInterval = null;
+
+  // ==========================================
+  // Toast Notification System (Shadow DOM)
+  // ==========================================
+  class ToastManager {
+    constructor() {
+      this.container = null;
+      this.shadow = null;
+      this._init();
+    }
+
+    _init() {
+      const existing = document.getElementById('__leetcode_backup_root__');
+      if (existing) existing.remove();
+
+      this.container = document.createElement('div');
+      this.container.id = '__leetcode_backup_root__';
+      this.container.style.all = 'initial';
+      this.shadow = this.container.attachShadow({ mode: 'open' });
+
+      const style = document.createElement('style');
+      style.textContent = `
+        .toast-container {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          z-index: 2147483647;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          pointer-events: none;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        .toast {
+          pointer-events: auto;
+          min-width: 300px;
+          max-width: 420px;
+          padding: 12px 16px;
+          border-radius: 8px;
+          background-color: #1e293b;
+          color: #f8fafc;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+          border: 1px solid #334155;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          font-size: 13px;
+          line-height: 1.4;
+          opacity: 0;
+          transform: translateY(12px);
+          transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .toast.visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        .toast-icon {
+          flex-shrink: 0;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .toast-body {
+          flex-grow: 1;
+        }
+        .toast-title {
+          font-weight: 600;
+          color: #f1f5f9;
+          margin-bottom: 2px;
+        }
+        .toast-msg {
+          color: #94a3b8;
+          word-break: break-word;
+        }
+        .toast.success .toast-title { color: #34d399; }
+        .toast.success { border-color: #059669; }
+        .toast.error .toast-title { color: #f87171; }
+        .toast.error { border-color: #dc2626; }
+        .toast.info .toast-title { color: #60a5fa; }
+        .toast.info { border-color: #2563eb; }
+        .spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid #38bdf8;
+          border-top-color: transparent;
+          border-radius: 50%;
+          animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'toast-container';
+
+      this.shadow.appendChild(style);
+      this.shadow.appendChild(wrapper);
+      this.wrapper = wrapper;
+
+      if (document.body) {
+        document.body.appendChild(this.container);
+      } else {
+        document.addEventListener('DOMContentLoaded', () => {
+          document.body.appendChild(this.container);
+        });
+      }
+    }
+
+    show(type, title, message, duration = 4000) {
+      if (!this.wrapper && document.body) this._init();
+      if (!this.wrapper) return null;
+
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+
+      let iconHtml = '';
+      if (type === 'loading') {
+        iconHtml = '<div class="spinner"></div>';
+      } else if (type === 'success') {
+        iconHtml = '<span style="color:#10b981;font-weight:bold;font-size:16px;">✓</span>';
+      } else if (type === 'error') {
+        iconHtml = '<span style="color:#ef4444;font-weight:bold;font-size:16px;">✕</span>';
+      } else {
+        iconHtml = '<span style="color:#38bdf8;font-weight:bold;font-size:16px;">ℹ</span>';
+      }
+
+      toast.innerHTML = `
+        <div class="toast-icon">${iconHtml}</div>
+        <div class="toast-body">
+          <div class="toast-title">${title}</div>
+          <div class="toast-msg">${message}</div>
+        </div>
+      `;
+
+      this.wrapper.appendChild(toast);
+
+      // Trigger animation
+      requestAnimationFrame(() => {
+        toast.classList.add('visible');
+      });
+
+      const closeToast = () => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 250);
+      };
+
+      if (duration > 0) {
+        setTimeout(closeToast, duration);
+      }
+
+      return {
+        update: (newType, newTitle, newMessage, newDuration = 4000) => {
+          toast.className = `toast ${newType} visible`;
+          let newIcon = '';
+          if (newType === 'loading') newIcon = '<div class="spinner"></div>';
+          else if (newType === 'success') newIcon = '<span style="color:#10b981;font-weight:bold;font-size:16px;">✓</span>';
+          else if (newType === 'error') newIcon = '<span style="color:#ef4444;font-weight:bold;font-size:16px;">✕</span>';
+          else newIcon = '<span style="color:#38bdf8;font-weight:bold;font-size:16px;">ℹ</span>';
+
+          const iconEl = toast.querySelector('.toast-icon');
+          const titleEl = toast.querySelector('.toast-title');
+          const msgEl = toast.querySelector('.toast-msg');
+          if (iconEl) iconEl.innerHTML = newIcon;
+          if (titleEl) titleEl.textContent = newTitle;
+          if (msgEl) msgEl.textContent = newMessage;
+
+          if (newDuration > 0) {
+            setTimeout(closeToast, newDuration);
+          }
+        },
+        close: closeToast
+      };
+    }
+  }
+
+  const toasts = new ToastManager();
+
+  // ==========================================
+  // Submission Processing Logic
+  // ==========================================
+
+  /**
+   * Retrieves GitHub configuration from storage
+   */
+  async function getExtensionSettings() {
+    const data = await chrome.storage.local.get('leetcode_backup_settings');
+    return data['leetcode_backup_settings'] || {
+      githubToken: '',
+      repoOwner: '',
+      repoName: '',
+      branch: 'main',
+      syncContests: false,
+      syncPaused: false
+    };
+  }
+
+  /**
+   * Called when an "Accepted" submission is detected on the page
+   */
+  async function handleAcceptedSubmission(slug) {
+    if (isProcessingSubmission) return;
+    isProcessingSubmission = true;
+
+    try {
+      console.log(`[LeetCode-Backup] Accepted result detected for problem "${slug}". Fetching details...`);
+
+      // Allow LeetCode backend a brief moment (1.5s) to register the submission
+      await new Promise(r => setTimeout(r, 1500));
+
+      const submission = await submissionReader.getLatestAcceptedSubmission(slug);
+
+      if (!submission || !submission.submissionId) {
+        console.warn('[LeetCode-Backup] Could not obtain accepted submission details.');
+        return;
+      }
+
+      if (submission.submissionId === lastProcessedSubmissionId) {
+        console.log(`[LeetCode-Backup] Submission #${submission.submissionId} already handled.`);
+        return;
+      }
+
+      const isDup = await localQueue.isDuplicate(submission.submissionId);
+      if (isDup) {
+        console.log(`[LeetCode-Backup] Submission #${submission.submissionId} is already in queue or synced.`);
+        lastProcessedSubmissionId = submission.submissionId;
+        return;
+      }
+
+      lastProcessedSubmissionId = submission.submissionId;
+
+      // 1. Save locally as pending
+      const toastHandle = toasts.show(
+        'loading',
+        'LeetCode Backup',
+        `Accepted solution #${submission.submissionId} detected. Saving locally...`,
+        0
+      );
+
+      const queuedItem = await localQueue.enqueue(submission);
+
+      // 2. Check settings for immediate upload
+      const settings = await getExtensionSettings();
+
+      if (settings.syncPaused) {
+        toastHandle.update(
+          'info',
+          'Queued Locally',
+          `Solution #${submission.submissionId} saved. Sync is currently paused.`,
+          5000
+        );
+        return;
+      }
+
+      if (!settings.githubToken || !settings.repoOwner || !settings.repoName) {
+        toastHandle.update(
+          'info',
+          'Queued Locally',
+          `Solution saved to local queue. Configure GitHub repository in extension popup to auto-upload.`,
+          6000
+        );
+        return;
+      }
+
+      // 3. Initiate GitHub upload
+      toastHandle.update(
+        'loading',
+        'Backing up to GitHub...',
+        `Uploading ${queuedItem.solutionPath} to ${settings.repoOwner}/${settings.repoName}...`,
+        0
+      );
+
+      const uploader = new GitHubUploaderClass({
+        token: settings.githubToken,
+        owner: settings.repoOwner,
+        repo: settings.repoName,
+        branch: settings.branch || 'main'
+      });
+
+      try {
+        await localQueue.updateStatus(queuedItem.submissionId, 'syncing');
+        await uploader.uploadSubmission(queuedItem);
+        await localQueue.updateStatus(queuedItem.submissionId, 'synced');
+
+        toastHandle.update(
+          'success',
+          'Backed Up to GitHub',
+          `Committed: ${queuedItem.solutionPath}`,
+          4500
+        );
+      } catch (uploadErr) {
+        console.error('[LeetCode-Backup] Upload failed:', uploadErr);
+        await localQueue.updateStatus(queuedItem.submissionId, 'failed', { error: uploadErr.message });
+        toastHandle.update(
+          'error',
+          'GitHub Upload Failed',
+          `${uploadErr.message}. Queued as pending for retry.`,
+          6000
+        );
+      }
+    } catch (err) {
+      console.error('[LeetCode-Backup] Error handling accepted submission:', err);
+    } finally {
+      // Release processing lock after brief cooldown
+      setTimeout(() => {
+        isProcessingSubmission = false;
+      }, 3000);
+    }
+  }
+
+  // ==========================================
+  // DOM Observers for Submission Result
+  // ==========================================
+
+  /**
+   * Scans target element for "Accepted" submission badge
+   */
+  function checkForAcceptedResult(node) {
+    if (!node) return false;
+
+    // Check if node is an element
+    if (node.nodeType !== 1) return false;
+
+    // Look for data-e2e-locator or standard submission result markers
+    const submissionResult = node.querySelector?.('[data-e2e-locator="submission-result"]') ||
+      (node.getAttribute?.('data-e2e-locator') === 'submission-result' ? node : null);
+
+    if (submissionResult) {
+      const text = (submissionResult.textContent || '').trim();
+      if (text.includes('Accepted')) return true;
+    }
+
+    // Modern LeetCode dynamic layout result text (green "Accepted" state)
+    const acceptedElements = node.querySelectorAll?.('[class*="text-green"], [class*="text-olive"], [class*="text-success"]');
+    if (acceptedElements && acceptedElements.length > 0) {
+      for (const el of acceptedElements) {
+        const txt = (el.textContent || '').trim();
+        if (txt === 'Accepted' || txt.startsWith('Accepted')) {
+          return true;
+        }
+      }
+    }
+
+    // Direct text check on node if small
+    const directText = (node.textContent || '').trim();
+    if (
+      directText.startsWith('Accepted') &&
+      directText.includes('Runtime') &&
+      directText.length < 500
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Initializes DOM MutationObserver on practice problem page
+   */
+  function startSubmissionObserver(problemSlug) {
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+    }
+
+    console.log(`[LeetCode-Backup] Starting submission observer for practice problem: ${problemSlug}`);
+
+    activeObserver = new MutationObserver((mutations) => {
+      if (isProcessingSubmission) return;
+
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          for (const addedNode of mutation.addedNodes) {
+            if (checkForAcceptedResult(addedNode)) {
+              handleAcceptedSubmission(problemSlug);
+              return;
+            }
+          }
+        } else if (mutation.type === 'characterData') {
+          if (mutation.target.textContent && mutation.target.textContent.includes('Accepted')) {
+            const parent = mutation.target.parentElement;
+            if (checkForAcceptedResult(parent)) {
+              handleAcceptedSubmission(problemSlug);
+              return;
+            }
+          }
+        }
+      }
+    });
+
+    activeObserver.observe(document.body || document.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+
+    // Also listen to submit button click as proactive arming
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      const btnText = (btn.textContent || '').trim();
+      const isSubmitBtn =
+        btnText === 'Submit' ||
+        btn.getAttribute('data-e2e-locator') === 'console-submit-button' ||
+        btn.getAttribute('data-cypress') === 'SubmitCode';
+
+      if (isSubmitBtn) {
+        console.log('[LeetCode-Backup] Submit button clicked. Arming result monitor...');
+        pollForResult(problemSlug, 20); // Poll up to 20 times (30 seconds)
+      }
+    }, true);
+  }
+
+  /**
+   * Periodic polling after submit button click to handle cases where MutationObserver misses DOM change
+   */
+  function pollForResult(problemSlug, remainingTries) {
+    if (remainingTries <= 0 || isProcessingSubmission) return;
+
+    setTimeout(() => {
+      if (isProcessingSubmission) return;
+
+      // Scan page for Accepted
+      const resultElements = document.querySelectorAll('[data-e2e-locator="submission-result"], [class*="text-green"], [class*="text-olive"]');
+      for (const el of resultElements) {
+        if ((el.textContent || '').trim().includes('Accepted')) {
+          handleAcceptedSubmission(problemSlug);
+          return;
+        }
+      }
+
+      pollForResult(problemSlug, remainingTries - 1);
+    }, 1500);
+  }
+
+  /**
+   * Stops and disconnects all observers
+   */
+  function stopSubmissionObserver() {
+    if (activeObserver) {
+      activeObserver.disconnect();
+      activeObserver = null;
+      console.log('[LeetCode-Backup] Submission observer disconnected.');
+    }
+  }
+
+  // ==========================================
+  // Contest Guard & URL Routing
+  // ==========================================
+
+  async function evaluateCurrentRoute() {
+    const currentUrl = window.location.href;
+    if (currentUrl === lastCheckedUrl) return;
+    lastCheckedUrl = currentUrl;
+
+    const settings = await getExtensionSettings();
+    const guardCheck = contestGuard.shouldSync(currentUrl, settings.syncContests);
+
+    if (guardCheck.isContest && !settings.syncContests) {
+      console.log(`[LeetCode-Backup] Contest guard active: URL is a contest page (${currentUrl}). All sync & observers stopped.`);
+      stopSubmissionObserver();
+      return;
+    }
+
+    if (guardCheck.isPractice && guardCheck.slug) {
+      startSubmissionObserver(guardCheck.slug);
+    } else {
+      stopSubmissionObserver();
+    }
+  }
+
+  // Hook SPA History transitions
+  const origPushState = history.pushState;
+  history.pushState = function () {
+    const result = origPushState.apply(this, arguments);
+    window.dispatchEvent(new Event('__lc_url_changed__'));
+    return result;
+  };
+
+  const origReplaceState = history.replaceState;
+  history.replaceState = function () {
+    const result = origReplaceState.apply(this, arguments);
+    window.dispatchEvent(new Event('__lc_url_changed__'));
+    return result;
+  };
+
+  window.addEventListener('popstate', () => {
+    evaluateCurrentRoute();
+  });
+
+  window.addEventListener('__lc_url_changed__', () => {
+    setTimeout(evaluateCurrentRoute, 100);
+  });
+
+  // Fail-safe URL poll for SPA changes every 1.5s
+  urlPollInterval = setInterval(evaluateCurrentRoute, 1500);
+
+  // Initial evaluation
+  evaluateCurrentRoute();
+})();

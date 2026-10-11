@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LeetCode to GitHub Backup</title>
+  <link rel="stylesheet" href="../../styles/popup.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand">
+      <img src="../../icons/icon-32.png" alt="Icon" class="brand-icon">
+      <div class="brand-title">
+        LeetCode Sync
+        <span class="tag">Backup</span>
+      </div>
+    </div>
+    <div class="pause-control">
+      <button id="btn-toggle-sync" class="btn-toggle-pause" title="Pause or resume automatic syncing">
+        <span id="sync-indicator">●</span>
+        <span id="sync-status-text">Active</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Tab Navigation -->
+  <nav class="tabs-nav">
+    <button class="tab-btn active" data-tab="queue">
+      Queue
+      <span id="tab-queue-badge" class="tab-badge" style="display: none;">0</span>
+    </button>
+    <button class="tab-btn" data-tab="backfill">
+      Backfill
+    </button>
+    <button class="tab-btn" data-tab="settings">
+      Settings
+    </button>
+  </nav>
+
+  <!-- TAB 1: Queue & Activity -->
+  <main id="pane-queue" class="tab-pane active">
+    <div class="stats-grid">
+      <div class="stat-card stat-synced">
+        <div id="stat-synced-count" class="stat-value">0</div>
+        <div class="stat-label">Synced</div>
+      </div>
+      <div class="stat-card stat-pending">
+        <div id="stat-pending-count" class="stat-value">0</div>
+        <div class="stat-label">Pending</div>
+      </div>
+      <div class="stat-card stat-failed">
+        <div id="stat-failed-count" class="stat-value">0</div>
+        <div class="stat-label">Failed</div>
+      </div>
+    </div>
+
+    <div class="filter-bar">
+      <div class="filter-chips">
+        <button class="chip-btn active" data-filter="all">All</button>
+        <button class="chip-btn" data-filter="pending">Pending</button>
+        <button class="chip-btn" data-filter="failed">Failed</button>
+        <button class="chip-btn" data-filter="synced">Synced</button>
+      </div>
+      <div class="action-buttons">
+        <button id="btn-retry-all" class="btn-action-sm" title="Retry all failed uploads" style="display: none;">
+          Retry All
+        </button>
+        <button id="btn-sync-now" class="btn-action-sm" title="Process pending queue now">
+          Sync Now
+        </button>
+      </div>
+    </div>
+
+    <!-- Scrollable Queue Container -->
+    <div id="queue-list" class="queue-list">
+      <div class="empty-state">
+        <div class="empty-icon">📦</div>
+        <div>No submissions in queue yet.</div>
+        <div style="font-size: 11px; margin-top: 4px;">Solve practice problems on LeetCode to auto-backup!</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- TAB 2: Historical Backfill -->
+  <section id="pane-backfill" class="tab-pane">
+    <div class="backfill-card">
+      <div class="backfill-heading">Backup Historical Submissions</div>
+      <div class="backfill-desc">
+        Scan your logged-in LeetCode account for previously accepted solutions and backfill them to your GitHub repository.
+      </div>
+
+      <button id="btn-scan-backfill" class="btn-secondary">
+        🔍 Scan Accepted Submissions
+      </button>
+
+      <!-- Scan Results Display -->
+      <div id="backfill-scan-summary" style="display: none;">
+        <div class="backfill-results-grid">
+          <div class="backfill-stat-box">
+            <div id="backfill-found-count" class="backfill-stat-val">0</div>
+            <div class="backfill-stat-lbl">Found</div>
+          </div>
+          <div class="backfill-stat-box">
+            <div id="backfill-synced-count" class="backfill-stat-val">0</div>
+            <div class="backfill-stat-lbl">Backed Up</div>
+          </div>
+          <div class="backfill-stat-box">
+            <div id="backfill-needed-count" class="backfill-stat-val">0</div>
+            <div class="backfill-stat-lbl">To Backup</div>
+          </div>
+        </div>
+
+        <button id="btn-start-backfill" class="btn-primary" style="margin-top: 8px;">
+          🚀 Start Gradual Backfill
+        </button>
+
+        <button id="btn-pause-backfill" class="btn-secondary" style="display: none; margin-top: 8px;">
+          ⏸ Pause Backfill
+        </button>
+      </div>
+
+      <!-- Live Progress Bar -->
+      <div id="backfill-progress-wrap" class="progress-container" style="display: none;">
+        <div class="progress-bar-bg">
+          <div id="backfill-progress-bar" class="progress-bar-fill"></div>
+        </div>
+        <div class="progress-labels">
+          <span id="backfill-progress-status">Processing...</span>
+          <span id="backfill-progress-pct">0%</span>
+        </div>
+      </div>
+
+      <div class="notice-box">
+        <strong>Note:</strong> LeetCode's history API provides access to recent submissions. Non-premium or older submissions may be truncated by LeetCode. Backfill runs gradually with rate pacing to protect your account and avoid GitHub API limits. Progress is saved so you can resume at any time.
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: Settings -->
+  <section id="pane-settings" class="tab-pane">
+    <div id="settings-alert" class="alert" style="display: none;"></div>
+
+    <form id="form-settings" autocomplete="off">
+      <div class="form-group">
+        <label class="form-label" for="setting-token">
+          GitHub Personal Access Token <span class="req">*</span>
+        </label>
+        <div class="form-input-wrap">
+          <input type="password" id="setting-token" class="form-input" placeholder="github_pat_... or ghp_..." required>
+          <button type="button" id="btn-toggle-token" class="btn-input-addon">Show</button>
+        </div>
+        <div class="form-help">
+          Create a Fine-grained Token with only <strong>Contents: Read and write</strong> access to your target repository.
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="setting-owner">
+          Repository Owner (Username / Org) <span class="req">*</span>
+        </label>
+        <input type="text" id="setting-owner" class="form-input" placeholder="e.g. octocat" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="setting-repo">
+          Repository Name <span class="req">*</span>
+        </label>
+        <input type="text" id="setting-repo" class="form-input" placeholder="e.g. leetcode-solutions" required>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="setting-branch">
+          Target Branch
+        </label>
+        <input type="text" id="setting-branch" class="form-input" placeholder="main" value="main">
+      </div>
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="setting-contests">
+        <div class="checkbox-content">
+          <span class="checkbox-title">Sync Contest Submissions</span>
+          <span class="checkbox-desc">
+            Contest pages are strictly excluded by default to avoid interfering with live competitions.
+          </span>
+        </div>
+      </div>
+
+      <button type="button" id="btn-test-connection" class="btn-secondary">
+        🔌 Test GitHub Connection
+      </button>
+
+      <button type="submit" id="btn-save-settings" class="btn-primary">
+        💾 Save Settings
+      </button>
+    </form>
+  </section>
+
+  <!-- Scripts -->
+  <script src="../contest-guard.js"></script>
+  <script src="../submission-reader.js"></script>
+  <script src="../queue.js"></script>
+  <script src="../github-uploader.js"></script>
+  <script src="settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

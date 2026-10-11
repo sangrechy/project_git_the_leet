@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "LeetCode to GitHub Backup",
+  "version": "1.0.0",
+  "description": "Automatically backs up your accepted LeetCode practice submissions to your own GitHub repository.",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://leetcode.com/*",
+    "https://leetcode.cn/*",
+    "https://api.github.com/*"
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    },
+    "default_title": "LeetCode to GitHub Backup"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://leetcode.com/*",
+        "https://leetcode.cn/*"
+      ],
+      "js": [
+        "src/contest-guard.js",
+        "src/submission-reader.js",
+        "src/queue.js",
+        "src/github-uploader.js",
+        "src/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
