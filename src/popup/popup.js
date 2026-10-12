@@ -262,6 +262,33 @@
     await renderRecentlySynced();
   }
 
+  function sendBackgroundMessage(message, retries = 2) {
+    return new Promise((resolve, reject) => {
+      const send = (attemptsLeft) => {
+        try {
+          chrome.runtime.sendMessage(message, (res) => {
+            const err = chrome.runtime.lastError;
+            if (err) {
+              if (attemptsLeft > 0 && err.message && err.message.includes('Could not establish connection')) {
+                setTimeout(() => send(attemptsLeft - 1), 300);
+                return;
+              }
+              return reject(new Error(err.message));
+            }
+            resolve(res);
+          });
+        } catch (e) {
+          if (attemptsLeft > 0) {
+            setTimeout(() => send(attemptsLeft - 1), 300);
+          } else {
+            reject(e);
+          }
+        }
+      };
+      send(retries);
+    });
+  }
+
   // ==========================================
   // "Sync Now" & Queue Processing
   // ==========================================
@@ -285,21 +312,17 @@
 
       // First hydrate from GitHub remote state (fetches any existing repo files)
       try {
-        await new Promise((resolve) => {
-          chrome.runtime.sendMessage({ type: 'SYNC_GITHUB_STATE' }, (res) => {
-            resolve(res);
-          });
-        });
+        await sendBackgroundMessage({ type: 'SYNC_GITHUB_STATE' });
       } catch (e) {
         console.warn('[LeetCode-Backup] Sync state message warning:', e);
       }
 
       // Then process any pending items
-      await new Promise((resolve) => {
-        chrome.runtime.sendMessage({ type: 'PROCESS_QUEUE' }, (res) => {
-          resolve(res);
-        });
-      });
+      try {
+        await sendBackgroundMessage({ type: 'PROCESS_QUEUE' });
+      } catch (e) {
+        console.warn('[LeetCode-Backup] Process queue warning:', e);
+      }
 
       await refreshHomeView();
     } finally {
@@ -620,11 +643,10 @@
     const settings = await settingsManager.getSettings();
     if (settings.githubToken && settings.repoOwner && settings.repoName) {
       try {
-        chrome.runtime.sendMessage({ type: 'SYNC_GITHUB_STATE' }, (res) => {
-          if (res && res.success) {
-            refreshHomeView();
-          }
-        });
+        const res = await sendBackgroundMessage({ type: 'SYNC_GITHUB_STATE' });
+        if (res && res.success) {
+          refreshHomeView();
+        }
       } catch (e) {}
     }
   }

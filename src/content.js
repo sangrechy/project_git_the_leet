@@ -416,19 +416,33 @@
         await localQueue.updateStatus(queuedItem.submissionId, 'syncing');
 
         const response = await new Promise((resolve, reject) => {
-          try {
-            chrome.runtime.sendMessage({
-              type: 'UPLOAD_SUBMISSION',
-              item: queuedItem
-            }, (res) => {
-              if (chrome.runtime.lastError) {
-                return reject(new Error(chrome.runtime.lastError.message));
+          const send = (retries = 2) => {
+            try {
+              chrome.runtime.sendMessage({
+                type: 'UPLOAD_SUBMISSION',
+                item: queuedItem
+              }, (res) => {
+                const err = chrome.runtime.lastError;
+                if (err) {
+                  if (retries > 0 && err.message && err.message.includes('Could not establish connection')) {
+                    setTimeout(() => send(retries - 1), 350);
+                    return;
+                  }
+                  return reject(new Error(err.message));
+                }
+                resolve(res);
+              });
+            } catch (sendErr) {
+              if (retries > 0 && sendErr.message && sendErr.message.includes('Extension context invalidated')) {
+                reject(sendErr);
+              } else if (retries > 0) {
+                setTimeout(() => send(retries - 1), 350);
+              } else {
+                reject(sendErr);
               }
-              resolve(res);
-            });
-          } catch (sendErr) {
-            reject(sendErr);
-          }
+            }
+          };
+          send();
         });
 
         if (response && response.success) {
