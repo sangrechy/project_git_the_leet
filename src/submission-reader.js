@@ -40,6 +40,9 @@
     mssql: 'sql',
     oraclesql: 'sql',
     postgresql: 'sql',
+    sql: 'sql',
+    pandas: 'py',
+    pythonml: 'py',
     bash: 'sh'
   };
 

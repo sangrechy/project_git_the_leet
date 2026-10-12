@@ -512,7 +512,7 @@
      *
      * @returns {Promise<Array<Object>>} Array of remote problem summaries
      */
-    async fetchRemoteState() {
+    async fetchRemoteState(cachedMetadata = {}) {
       this.validateConfig();
 
       const treeUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/trees/${encodeURIComponent(this.branch)}?recursive=1&_t=${Date.now()}`;
@@ -564,7 +564,9 @@
 
       const fetchMetadata = async (item) => {
         let meta = null;
-        if (item.metadataSha) {
+        if (cachedMetadata && cachedMetadata[item.folderName]) {
+          meta = cachedMetadata[item.folderName];
+        } else if (item.metadataSha) {
           try {
             const blobUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/blobs/${item.metadataSha}`;
             const bRes = await fetch(blobUrl, { headers: this._getHeaders() });

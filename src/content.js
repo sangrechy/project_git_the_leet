@@ -780,6 +780,11 @@
     }
 
     const currentUrl = window.location.href;
+    if (currentUrl === lastCheckedUrl && activeObserver) {
+      return;
+    }
+    lastCheckedUrl = currentUrl;
+
     const guardCheck = contestGuard.shouldSync(currentUrl);
 
     if (guardCheck.isContest) {

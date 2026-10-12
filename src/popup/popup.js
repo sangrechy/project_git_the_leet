@@ -211,6 +211,19 @@
         </div>
       `;
 
+      el.style.cursor = 'pointer';
+      el.title = `Click to open #${frontendId} ${title} on LeetCode`;
+      el.addEventListener('click', () => {
+        const url = item.problemUrl || (item.problemSlug ? `https://leetcode.com/problems/${item.problemSlug}/` : null);
+        if (url) {
+          if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
+            chrome.tabs.create({ url });
+          } else {
+            window.open(url, '_blank');
+          }
+        }
+      });
+
       recentList.appendChild(el);
     }
   }
@@ -259,7 +272,14 @@
     try {
       const settings = await settingsManager.getSettings();
       if (!settings.githubToken || !settings.repoOwner || !settings.repoName) {
-        // Prompt to configure settings
+        // Guide user to settings tab
+        tabs.forEach(t => t.classList.remove('active'));
+        panes.forEach(p => p.classList.remove('active'));
+        const settingsTab = document.querySelector('[data-tab="settings"]');
+        const settingsPane = document.getElementById('pane-settings');
+        if (settingsTab) settingsTab.classList.add('active');
+        if (settingsPane) settingsPane.classList.add('active');
+        showSettingsAlert('error', 'Please configure your GitHub token and repository first.');
         return;
       }
 
@@ -364,7 +384,11 @@
         btnScanBackfill.textContent = 'All Found Submissions Backed Up';
       }
     } catch (err) {
-      alert(`Failed to scan submissions: ${err.message}`);
+      console.error('Scan error:', err);
+      btnScanBackfill.textContent = 'Scan Failed (Check LeetCode Login)';
+      setTimeout(() => {
+        btnScanBackfill.textContent = 'Scan Submissions';
+      }, 4000);
     } finally {
       btnScanBackfill.disabled = false;
       if (btnScanBackfill.textContent.startsWith('Scanning')) {
@@ -377,7 +401,13 @@
     const settings = await settingsManager.getSettings();
     const validation = settingsManager.validate(settings);
     if (!validation.valid) {
-      alert(`Cannot start backfill: ${validation.errors.join(' ')}\nPlease configure settings first.`);
+      tabs.forEach(t => t.classList.remove('active'));
+      panes.forEach(p => p.classList.remove('active'));
+      const settingsTab = document.querySelector('[data-tab="settings"]');
+      const settingsPane = document.getElementById('pane-settings');
+      if (settingsTab) settingsTab.classList.add('active');
+      if (settingsPane) settingsPane.classList.add('active');
+      showSettingsAlert('error', `Cannot start backfill: ${validation.errors.join(' ')}`);
       return;
     }
 

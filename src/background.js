@@ -188,7 +188,30 @@ async function handleSyncGithubState() {
     branch: settings.branch || 'main'
   });
 
-  const remoteProblems = await uploader.fetchRemoteState();
+  const existingQueue = await localQueue.getQueue();
+  const cachedMeta = {};
+  for (const q of existingQueue) {
+    const key = q.folderName || (q.solutionPath ? q.solutionPath.split('/')[1] : null);
+    if (key && q.difficulty) {
+      cachedMeta[key] = {
+        submission_id: q.submissionId,
+        frontend_id: q.frontendId,
+        problem_title: q.problemTitle,
+        problem_slug: q.problemSlug,
+        difficulty: q.difficulty,
+        language: q.language,
+        timestamp: q.timestamp,
+        submitted_at: q.submittedAt,
+        runtime: q.runtime,
+        runtime_percentile: q.runtimePercentile,
+        memory: q.memory,
+        memory_percentile: q.memoryPercentile,
+        problem_url: q.problemUrl
+      };
+    }
+  }
+
+  const remoteProblems = await uploader.fetchRemoteState(cachedMeta);
   const syncResult = await localQueue.syncFromRemote(remoteProblems);
   const difficultyCounts = await localQueue.getDifficultyCounts();
   const counts = await localQueue.getCounts();

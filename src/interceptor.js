@@ -12,14 +12,19 @@
   if (window.__LEETCODE_BACKUP_INTERCEPTOR_LOADED__) return;
   window.__LEETCODE_BACKUP_INTERCEPTOR_LOADED__ = true;
 
+  function isCurrentRouteContest() {
+    const curPath = (window.location.pathname || '').toLowerCase();
+    const curHref = (window.location.href || '').toLowerCase();
+    return curPath === '/contest' || curPath.startsWith('/contest/') || curHref.includes('/contest');
+  }
+
   // Strict contest exclusion: completely inactive on any contest page
-  const currentPath = (window.location.pathname || '').toLowerCase();
-  if (currentPath === '/contest' || currentPath.startsWith('/contest/') || (window.location.href || '').toLowerCase().includes('/contest')) {
+  if (isCurrentRouteContest()) {
     return;
   }
 
   function notifyAccepted(submissionId, source) {
-    if (!submissionId) return;
+    if (!submissionId || isCurrentRouteContest()) return;
     try {
       window.postMessage({
         type: 'LEETCODE_SUBMISSION_ACCEPTED',
@@ -31,7 +36,7 @@
   }
 
   function notifyStarted(submissionId, source) {
-    if (!submissionId) return;
+    if (!submissionId || isCurrentRouteContest()) return;
     try {
       window.postMessage({
         type: 'LEETCODE_SUBMISSION_STARTED',
@@ -49,6 +54,8 @@
   window.fetch = async function (...args) {
     const response = await originalFetch.apply(this, args);
     try {
+      if (isCurrentRouteContest()) return response;
+
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
 
       // 1. Intercept /problems/<slug>/submit/ endpoint (returns submission_id)
@@ -127,6 +134,8 @@
   XMLHttpRequest.prototype.send = function (...args) {
     this.addEventListener('load', function () {
       try {
+        if (isCurrentRouteContest()) return;
+
         const url = this._lc_url || '';
 
         // Check submit endpoint
