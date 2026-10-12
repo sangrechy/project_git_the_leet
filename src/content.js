@@ -13,6 +13,13 @@
   if (window.__LEETCODE_BACKUP_CONTENT_LOADED__) return;
   window.__LEETCODE_BACKUP_CONTENT_LOADED__ = true;
 
+  // Strict contest exclusion: if URL is any contest route, immediately exit
+  const curPath = (window.location.pathname || '').toLowerCase();
+  if (curPath === '/contest' || curPath.startsWith('/contest/') || (window.location.href || '').toLowerCase().includes('/contest')) {
+    console.log('[git the leet] Contest route detected. Extension deactivated.');
+    return;
+  }
+
   const contestGuard = window.ContestGuard || globalThis.ContestGuard;
   const SubmissionReaderClass = window.SubmissionReader || globalThis.SubmissionReader;
   const LocalQueueClass = window.LocalQueue || globalThis.LocalQueue;
@@ -773,12 +780,11 @@
     }
 
     const currentUrl = window.location.href;
-    const settings = await getExtensionSettings();
-    const guardCheck = contestGuard.shouldSync(currentUrl, settings.syncContests);
+    const guardCheck = contestGuard.shouldSync(currentUrl);
 
-    if (guardCheck.isContest && !settings.syncContests) {
+    if (guardCheck.isContest) {
       if (activeObserver) {
-        console.log(`[LeetCode-Backup] Contest guard active: URL is a contest page (${currentUrl}). All sync & observers stopped.`);
+        console.log(`[git the leet] Contest page detected (${currentUrl}). Stopping all observers.`);
         stopSubmissionObserver();
       }
       return;

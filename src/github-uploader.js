@@ -172,6 +172,25 @@
         this.createBlob(item.metadataJson)
       ]);
 
+      // Check if existing file on GitHub is already identical (prevents redundant commits if extension reset)
+      try {
+        const existingSha = await this.getFileSha(cleanSolPath);
+        if (existingSha && existingSha === solBlobSha) {
+          const metaSha = await this.getFileSha(cleanMetaPath);
+          if (metaSha && metaSha === metaBlobSha) {
+            console.log(`[git the leet] ${cleanSolPath} is already up to date on GitHub. Skipping duplicate commit.`);
+            return {
+              success: true,
+              alreadySynced: true,
+              solutionSha: solBlobSha,
+              metadataSha: metaBlobSha,
+              solutionPath: cleanSolPath,
+              metadataPath: cleanMetaPath
+            };
+          }
+        }
+      } catch (e) {}
+
       let lastError = null;
 
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -484,6 +503,128 @@
       }
 
       throw lastError || new Error(`GitHub upload failed for ${filePath}`);
+    }
+
+    /**
+     * Queries GitHub for all existing problems under leetcode_problem/
+     * Uses recursive Git tree API in a single network request.
+     * Parses metadata for difficulty, problem ID, and submission ID.
+     *
+     * @returns {Promise<Array<Object>>} Array of remote problem summaries
+     */
+    async fetchRemoteState() {
+      this.validateConfig();
+
+      const treeUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/trees/${encodeURIComponent(this.branch)}?recursive=1&_t=${Date.now()}`;
+      const res = await fetch(treeUrl, {
+        headers: {
+          ...this._getHeaders(),
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        }
+      });
+
+      if (!res.ok) {
+        if (res.status === 404) return []; // Empty repository or branch
+        throw new Error(`Failed to query GitHub tree: HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+      const tree = data.tree || [];
+
+      // Group files by problem folder
+      const problemFolderMap = new Map();
+
+      for (const entry of tree) {
+        if (entry.type !== 'blob') continue;
+        const p = entry.path || '';
+        if (!p.startsWith('leetcode_problem/')) continue;
+
+        const parts = p.split('/');
+        if (parts.length < 3) continue;
+        const folderName = parts[1]; // e.g. "0061-rotate-list"
+        const fileName = parts[2]; // e.g. "metadata.json" or "solution.cpp"
+
+        if (!problemFolderMap.has(folderName)) {
+          problemFolderMap.set(folderName, {
+            folderName,
+            files: {},
+            metadataSha: null
+          });
+        }
+
+        const info = problemFolderMap.get(folderName);
+        info.files[fileName] = entry;
+        if (fileName === 'metadata.json') {
+          info.metadataSha = entry.sha;
+        }
+      }
+
+      const results = [];
+      const folders = Array.from(problemFolderMap.values());
+
+      const fetchMetadata = async (item) => {
+        let meta = null;
+        if (item.metadataSha) {
+          try {
+            const blobUrl = `${this.apiBase}/repos/${encodeURIComponent(this.owner)}/${encodeURIComponent(this.repo)}/git/blobs/${item.metadataSha}`;
+            const bRes = await fetch(blobUrl, { headers: this._getHeaders() });
+            if (bRes.ok) {
+              const bData = await bRes.json();
+              const binary = atob(bData.content.replace(/\s+/g, ''));
+              const bytes = new Uint8Array(binary.length);
+              for (let j = 0; j < binary.length; j++) bytes[j] = binary.charCodeAt(j);
+              meta = JSON.parse(new TextDecoder().decode(bytes));
+            }
+          } catch (e) {
+            // Best effort; fall back to folder name
+          }
+        }
+
+        const dashIdx = item.folderName.indexOf('-');
+        const parsedId = dashIdx !== -1 ? item.folderName.substring(0, dashIdx).replace(/^0+/, '') || '0' : '0';
+        const parsedSlug = dashIdx !== -1 ? item.folderName.substring(dashIdx + 1) : item.folderName;
+        const parsedTitle = parsedSlug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+        let solEntry = null;
+        for (const fName in item.files) {
+          if (fName.startsWith('solution.') || fName.startsWith('Solution.')) {
+            solEntry = item.files[fName];
+            break;
+          }
+        }
+
+        const ext = solEntry ? solEntry.path.split('.').pop() : 'txt';
+
+        return {
+          folderName: item.folderName,
+          submissionId: meta?.submission_id || `git_${item.folderName}`,
+          frontendId: meta?.frontend_id || meta?.problem_id || parsedId,
+          problemTitle: meta?.problem_title || parsedTitle,
+          problemSlug: meta?.problem_slug || parsedSlug,
+          difficulty: meta?.difficulty || 'Medium',
+          language: meta?.language || ext,
+          extension: ext,
+          solutionPath: solEntry ? solEntry.path : `leetcode_problem/${item.folderName}/solution.${ext}`,
+          metadataPath: `leetcode_problem/${item.folderName}/metadata.json`,
+          timestamp: meta?.timestamp || Math.floor(Date.now() / 1000),
+          submittedAt: meta?.submitted_at || new Date().toISOString(),
+          runtime: meta?.runtime || null,
+          runtimePercentile: meta?.runtime_percentile || null,
+          memory: meta?.memory || null,
+          memoryPercentile: meta?.memory_percentile || null,
+          problemUrl: meta?.problem_url || `https://leetcode.com/problems/${parsedSlug}/`
+        };
+      };
+
+      // Batch queries in sets of 15
+      const BATCH_SIZE = 15;
+      for (let i = 0; i < folders.length; i += BATCH_SIZE) {
+        const batch = folders.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(fetchMetadata));
+        results.push(...batchResults);
+      }
+
+      return results;
     }
 
     /**

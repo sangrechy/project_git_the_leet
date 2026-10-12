@@ -164,6 +164,7 @@
             questionFrontendId
             title
             titleSlug
+            difficulty
           }
         }
       `;
@@ -291,6 +292,7 @@
               title
               titleSlug
               translatedTitle
+              difficulty
             }
             notes
             topicTags {
@@ -451,7 +453,26 @@
         }
       }
 
-      // 4. Extract runtime and memory stats from DOM text
+      // 4. Extract difficulty
+      let difficulty = questionData?.difficulty || fallbackMeta.difficulty || '';
+      if (!difficulty) {
+        const diffEls = document.querySelectorAll('[class*="text-olive"], [class*="text-teal"], [class*="text-yellow"], [class*="text-pink"], [class*="text-red"], [class*="text-difficulty"]');
+        for (const el of diffEls) {
+          const t = (el.textContent || '').trim();
+          if (t === 'Easy' || t === 'Medium' || t === 'Hard') {
+            difficulty = t;
+            break;
+          }
+        }
+      }
+      if (!difficulty) {
+        const bodyText = document.body ? document.body.innerText : '';
+        if (/\bEasy\b/.test(bodyText) && !/\bMedium\b/.test(bodyText)) difficulty = 'Easy';
+        else if (/\bHard\b/.test(bodyText)) difficulty = 'Hard';
+        else difficulty = 'Medium';
+      }
+
+      // 5. Extract runtime and memory stats from DOM text
       let runtime = null;
       let memory = null;
       let runtimePercentile = null;
@@ -479,6 +500,7 @@
         frontend_id: String(frontendId),
         problem_title: title,
         problem_slug: slug,
+        difficulty: difficulty,
         language: lang,
         timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
@@ -495,6 +517,7 @@
         frontendId: String(frontendId),
         problemTitle: title,
         problemSlug: slug,
+        difficulty: difficulty,
         language: lang,
         code,
         extension: paths.extension,
@@ -530,12 +553,15 @@
         return null;
       }
 
+      const difficulty = q.difficulty || fallbackMeta.difficulty || 'Medium';
+
       const metadata = {
         submission_id: String(submissionId),
         problem_id: String(q.questionId || frontendId),
         frontend_id: String(frontendId),
         problem_title: title,
         problem_slug: slug,
+        difficulty: difficulty,
         language: lang,
         timestamp: timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
@@ -552,6 +578,7 @@
         frontendId: String(frontendId),
         problemTitle: title,
         problemSlug: slug,
+        difficulty: difficulty,
         language: lang,
         code: details.code,
         extension: paths.extension,
@@ -574,6 +601,7 @@
       const lang = details.lang || fallbackMeta.lang || 'python3';
       const timestamp = details.timestamp || Math.floor(Date.now() / 1000);
       const paths = this.buildPaths(frontendId, slug, lang);
+      const difficulty = q.difficulty || fallbackMeta.difficulty || 'Medium';
 
       const metadata = {
         submission_id: String(submissionId),
@@ -581,6 +609,7 @@
         frontend_id: String(frontendId),
         problem_title: title,
         problem_slug: slug,
+        difficulty: difficulty,
         language: lang,
         timestamp: timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
@@ -597,6 +626,7 @@
         frontendId: String(frontendId),
         problemTitle: title,
         problemSlug: slug,
+        difficulty: difficulty,
         language: lang,
         code: details.code,
         extension: paths.extension,
@@ -620,12 +650,15 @@
       const timestamp = details.timestamp || Math.floor(Date.now() / 1000);
       const paths = this.buildPaths(frontendId, slug, lang);
 
+      const difficulty = fallbackMeta.difficulty || 'Medium';
+
       const metadata = {
         submission_id: String(submissionId),
         problem_id: String(frontendId),
         frontend_id: String(frontendId),
         problem_title: title,
         problem_slug: slug,
+        difficulty: difficulty,
         language: lang,
         timestamp: timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
@@ -642,6 +675,7 @@
         frontendId: String(frontendId),
         problemTitle: title,
         problemSlug: slug,
+        difficulty: difficulty,
         language: lang,
         code,
         extension: paths.extension,

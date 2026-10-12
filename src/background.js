@@ -52,6 +52,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'SYNC_GITHUB_STATE') {
+    handleSyncGithubState()
+      .then(res => sendResponse(res))
+      .catch(err => {
+        console.error('[LeetCode-Backup Background] Sync GitHub state error:', err);
+        sendResponse({ success: false, error: err.message });
+      });
+    return true;
+  }
+
+  if (message.type === 'GET_DIFFICULTY_COUNTS') {
+    localQueue.getDifficultyCounts()
+      .then(counts => sendResponse({ success: true, counts }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  if (message.type === 'GET_LAST_SYNCED') {
+    localQueue.getLastSynced(message.limit || 10)
+      .then(items => sendResponse({ success: true, items }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
   return false;
 });
 
@@ -147,3 +171,36 @@ async function handleTestConnection(providedSettings) {
     message: `Connected successfully to ${res.fullName} (${res.defaultBranch})`
   };
 }
+
+/**
+ * Hydrates local queue from GitHub remote tree (handles extension reset/reinstall seamlessly)
+ */
+async function handleSyncGithubState() {
+  const settings = await getStoredSettings();
+  if (!settings.githubToken || !settings.repoOwner || !settings.repoName) {
+    return { success: false, error: 'GitHub settings not configured.' };
+  }
+
+  const uploader = new GitHubUploader({
+    token: settings.githubToken,
+    owner: settings.repoOwner,
+    repo: settings.repoName,
+    branch: settings.branch || 'main'
+  });
+
+  const remoteProblems = await uploader.fetchRemoteState();
+  const syncResult = await localQueue.syncFromRemote(remoteProblems);
+  const difficultyCounts = await localQueue.getDifficultyCounts();
+  const counts = await localQueue.getCounts();
+  const lastSynced = await localQueue.getLastSynced(10);
+
+  return {
+    success: true,
+    imported: syncResult.imported,
+    total: syncResult.total,
+    counts,
+    difficultyCounts,
+    lastSynced
+  };
+}
+

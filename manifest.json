@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "LeetCode to GitHub Backup",
+  "name": "git the leet",
   "version": "1.0.0",
   "description": "Automatically backs up your accepted LeetCode practice submissions to your own GitHub repository.",
   "permissions": [
@@ -22,7 +22,7 @@
       "48": "icons/icon-48.png",
       "128": "icons/icon-128.png"
     },
-    "default_title": "LeetCode to GitHub Backup"
+    "default_title": "git the leet"
   },
   "icons": {
     "16": "icons/icon-16.png",
@@ -33,8 +33,16 @@
   "content_scripts": [
     {
       "matches": [
-        "https://leetcode.com/*",
-        "https://leetcode.cn/*"
+        "https://leetcode.com/problems/*",
+        "https://leetcode.com/problemset/*",
+        "https://leetcode.cn/problems/*",
+        "https://leetcode.cn/problemset/*"
+      ],
+      "exclude_matches": [
+        "https://leetcode.com/contest/*",
+        "https://leetcode.com/contest",
+        "https://leetcode.cn/contest/*",
+        "https://leetcode.cn/contest"
       ],
       "js": [
         "src/interceptor.js"
@@ -44,8 +52,16 @@
     },
     {
       "matches": [
-        "https://leetcode.com/*",
-        "https://leetcode.cn/*"
+        "https://leetcode.com/problems/*",
+        "https://leetcode.com/problemset/*",
+        "https://leetcode.cn/problems/*",
+        "https://leetcode.cn/problemset/*"
+      ],
+      "exclude_matches": [
+        "https://leetcode.com/contest/*",
+        "https://leetcode.com/contest",
+        "https://leetcode.cn/contest/*",
+        "https://leetcode.cn/contest"
       ],
       "js": [
         "src/contest-guard.js",

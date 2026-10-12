@@ -3,24 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LeetCode to GitHub Backup</title>
+  <title>git the leet</title>
   <link rel="stylesheet" href="../../styles/popup.css">
 </head>
 <body>
   <!-- Header -->
   <header class="app-header">
     <div class="brand">
-      <div class="brand-icon-wrap" title="LeetCode to GitHub Backup">
-        <img src="../../icons/icon-48.png" alt="LeetCode Backup" class="brand-icon">
+      <div class="brand-icon-wrap" title="git the leet">
+        <img src="../../icons/icon-128.png" alt="git the leet" class="brand-icon">
       </div>
-      <div class="brand-title">
-        LeetCode Sync
-        <span class="tag">Backup</span>
+      <div class="brand-info">
+        <div class="brand-title">git the leet</div>
+        <div class="brand-sub">GitHub Sync</div>
       </div>
     </div>
     <div class="pause-control">
       <button id="btn-toggle-sync" class="btn-toggle-pause" title="Pause or resume automatic syncing">
-        <span id="sync-indicator">●</span>
+        <span id="sync-indicator" class="sync-dot"></span>
         <span id="sync-status-text">Active</span>
       </button>
     </div>
@@ -28,8 +28,8 @@
 
   <!-- Tab Navigation: Recessed Segmented Track -->
   <nav class="tabs-nav">
-    <button class="tab-btn active" data-tab="queue">
-      Queue
+    <button class="tab-btn active" data-tab="home">
+      Home
       <span id="tab-queue-badge" class="tab-badge" style="display: none;">0</span>
     </button>
     <button class="tab-btn" data-tab="backfill">
@@ -40,9 +40,10 @@
     </button>
   </nav>
 
-  <!-- TAB 1: Queue & Activity -->
-  <main id="pane-queue" class="tab-pane active">
-    <div class="stats-grid">
+  <!-- TAB 1: Home (Stats, Sync Now, Donut Chart, Recently Synced Last 10) -->
+  <main id="pane-home" class="tab-pane active">
+    <!-- 1. Stats Strip -->
+    <div class="stats-strip">
       <div class="stat-card stat-synced">
         <div id="stat-synced-count" class="stat-value">0</div>
         <div class="stat-label">Synced</div>
@@ -57,29 +58,60 @@
       </div>
     </div>
 
-    <div class="filter-bar">
-      <div class="filter-chips">
-        <button class="chip-btn active" data-filter="all">All</button>
-        <button class="chip-btn" data-filter="pending">Pending</button>
-        <button class="chip-btn" data-filter="failed">Failed</button>
-        <button class="chip-btn" data-filter="synced">Synced</button>
+    <!-- 2. Sync Now Prominent Button -->
+    <div class="sync-action-box">
+      <button id="btn-sync-now" class="btn-sync-prominent" title="Process pending queue & refresh state">
+        <span id="btn-sync-text" class="btn-sync-text">Sync Now</span>
+      </button>
+      <button id="btn-retry-all" class="btn-retry-subtle" title="Retry all failed uploads" style="display: none;">
+        Retry Failed
+      </button>
+    </div>
+
+    <!-- 3. LeetCode Circular Pie/Donut Chart -->
+    <div class="chart-card">
+      <div class="chart-visual">
+        <svg class="donut-svg" viewBox="0 0 140 140" width="124" height="124">
+          <circle class="donut-track" cx="70" cy="70" r="52"></circle>
+          <circle id="donut-easy" class="donut-ring ring-easy" cx="70" cy="70" r="52"></circle>
+          <circle id="donut-medium" class="donut-ring ring-medium" cx="70" cy="70" r="52"></circle>
+          <circle id="donut-hard" class="donut-ring ring-hard" cx="70" cy="70" r="52"></circle>
+        </svg>
+        <div class="chart-center">
+          <div id="chart-total-count" class="chart-total">0</div>
+          <div class="chart-caption">Solved</div>
+        </div>
       </div>
-      <div class="action-buttons">
-        <button id="btn-retry-all" class="btn-action-sm" title="Retry all failed uploads" style="display: none;">
-          Retry All
-        </button>
-        <button id="btn-sync-now" class="btn-action-sm" title="Process pending queue now">
-          Sync Now
-        </button>
+      <div class="chart-legend">
+        <div class="legend-item">
+          <span class="legend-bullet bullet-easy"></span>
+          <span class="legend-name">Easy</span>
+          <span id="legend-easy-count" class="legend-count">0</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-bullet bullet-medium"></span>
+          <span class="legend-name">Medium</span>
+          <span id="legend-medium-count" class="legend-count">0</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-bullet bullet-hard"></span>
+          <span class="legend-name">Hard</span>
+          <span id="legend-hard-count" class="legend-count">0</span>
+        </div>
       </div>
     </div>
 
-    <!-- Scrollable Queue Container -->
-    <div id="queue-list" class="queue-list">
-      <div class="empty-state">
-        <div class="empty-icon">📦</div>
-        <div>No submissions in queue yet.</div>
-        <div style="font-size: 11px; margin-top: 4px;">Solve practice problems on LeetCode to auto-backup!</div>
+    <!-- 4. Recently Synced Submissions (Last 10) -->
+    <div class="recent-card">
+      <div class="recent-header">
+        <span class="recent-title">Recently Synced</span>
+        <span class="recent-count-tag">Last 10</span>
+      </div>
+      <div id="recent-list" class="recent-list">
+        <div class="empty-state">
+          <div class="empty-text">No synced submissions yet.</div>
+          <div class="empty-sub">Solve practice problems on LeetCode to auto-backup.</div>
+        </div>
       </div>
     </div>
   </main>
@@ -87,13 +119,13 @@
   <!-- TAB 2: Historical Backfill -->
   <section id="pane-backfill" class="tab-pane">
     <div class="backfill-card">
-      <div class="backfill-heading">Backup Historical Submissions</div>
-      <div class="backfill-desc">
+      <div class="section-heading">Historical Backfill</div>
+      <div class="section-desc">
         Scan your logged-in LeetCode account for previously accepted solutions and backfill them to your GitHub repository.
       </div>
 
       <button id="btn-scan-backfill" class="btn-secondary">
-        🔍 Scan Accepted Submissions
+        Scan Submissions
       </button>
 
       <!-- Scan Results Display -->
@@ -113,12 +145,12 @@
           </div>
         </div>
 
-        <button id="btn-start-backfill" class="btn-primary" style="margin-top: 10px;">
-          🚀 Start Gradual Backfill
+        <button id="btn-start-backfill" class="btn-primary" style="margin-top: 12px;">
+          Start Backfill
         </button>
 
-        <button id="btn-pause-backfill" class="btn-secondary" style="display: none; margin-top: 10px;">
-          ⏸ Pause Backfill
+        <button id="btn-pause-backfill" class="btn-secondary" style="display: none; margin-top: 12px;">
+          Pause Backfill
         </button>
       </div>
 
@@ -134,7 +166,7 @@
       </div>
 
       <div class="notice-box">
-        <strong>Note:</strong> LeetCode's history API provides access to recent submissions. Non-premium or older submissions may be truncated by LeetCode. Backfill runs gradually with rate pacing to protect your account and avoid GitHub API limits. Progress is saved so you can resume at any time.
+        Submissions are rate-paced to respect GitHub limits. Progress is saved locally so you can resume at any time.
       </div>
     </div>
   </section>
@@ -153,7 +185,7 @@
           <button type="button" id="btn-toggle-token" class="btn-input-addon">Show</button>
         </div>
         <div class="form-help">
-          Create a Fine-grained Token with only <strong>Contents: Read and write</strong> access to your target repository.
+          Fine-grained token with <strong>Contents: Read and write</strong> access to your target repository.
         </div>
       </div>
 
@@ -168,7 +200,7 @@
         <label class="form-label" for="setting-repo">
           Repository Name <span class="req">*</span>
         </label>
-        <input type="text" id="setting-repo" class="form-input" placeholder="e.g. leetcode-solutions" required>
+        <input type="text" id="setting-repo" class="form-input" placeholder="e.g. leetcode" required>
       </div>
 
       <div class="form-group">
@@ -183,7 +215,7 @@
         <div class="toggle-info">
           <span class="toggle-title">Sync Contest Submissions</span>
           <span class="toggle-desc">
-            Contest pages are strictly excluded by default to avoid interfering with live competitions.
+            Contest pages are strictly excluded by default to avoid interfering with competitions.
           </span>
         </div>
         <div class="switch-nm" id="switch-contests">
@@ -192,13 +224,15 @@
         <input type="checkbox" id="setting-contests" style="display: none;">
       </div>
 
-      <button type="button" id="btn-test-connection" class="btn-secondary">
-        🔌 Test GitHub Connection
-      </button>
+      <div class="settings-actions">
+        <button type="button" id="btn-test-connection" class="btn-secondary">
+          Test Connection
+        </button>
 
-      <button type="submit" id="btn-save-settings" class="btn-primary">
-        💾 Save Settings
-      </button>
+        <button type="submit" id="btn-save-settings" class="btn-primary">
+          Save Settings
+        </button>
+      </div>
     </form>
   </section>
 

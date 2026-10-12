@@ -1,9 +1,12 @@
 /**
- * Popup Controller for LeetCode Backup Extension
+ * Popup Controller for "git the leet"
  *
- * Handles tab switching, queue rendering and filtering, retry triggers,
- * settings management, connectivity diagnostics, and the multi-step
- * historical backfill workflow.
+ * Implements:
+ * - 4-item Home View: Stats Strip, Sync Now, LeetCode Donut Chart, Recently Synced (last 10)
+ * - Automatic GitHub Remote State Hydration (resolves extension reinstall/reset state loss)
+ * - Soft Neumorphic UI interactions
+ * - Historical Backfill Workflow
+ * - Settings Management & Connectivity Diagnostics
  */
 
 (function () {
@@ -15,30 +18,44 @@
   const submissionReader = new SubmissionReader();
 
   // State
-  let currentFilter = 'all';
   let isBackfillRunning = false;
   let backfillPaused = false;
   let scannedSubmissionsToBackfill = [];
 
-  // DOM Elements
+  // DOM Elements - Navigation
   const tabs = document.querySelectorAll('.tab-btn');
   const panes = document.querySelectorAll('.tab-pane');
   const queueBadge = document.getElementById('tab-queue-badge');
 
+  // DOM Elements - Sync Status
   const btnToggleSync = document.getElementById('btn-toggle-sync');
   const syncIndicator = document.getElementById('sync-indicator');
   const syncStatusText = document.getElementById('sync-status-text');
 
+  // DOM Elements - Home (4 core parts)
+  // 1. Stats Strip
   const statSynced = document.getElementById('stat-synced-count');
   const statPending = document.getElementById('stat-pending-count');
   const statFailed = document.getElementById('stat-failed-count');
 
-  const filterChips = document.querySelectorAll('.chip-btn');
-  const queueList = document.getElementById('queue-list');
-  const btnRetryAll = document.getElementById('btn-retry-all');
+  // 2. Sync Now
   const btnSyncNow = document.getElementById('btn-sync-now');
+  const btnSyncText = document.getElementById('btn-sync-text');
+  const btnRetryAll = document.getElementById('btn-retry-all');
 
-  // Backfill Elements
+  // 3. LeetCode Donut Chart
+  const donutEasy = document.getElementById('donut-easy');
+  const donutMedium = document.getElementById('donut-medium');
+  const donutHard = document.getElementById('donut-hard');
+  const chartTotalCount = document.getElementById('chart-total-count');
+  const legendEasyCount = document.getElementById('legend-easy-count');
+  const legendMediumCount = document.getElementById('legend-medium-count');
+  const legendHardCount = document.getElementById('legend-hard-count');
+
+  // 4. Recently Synced
+  const recentList = document.getElementById('recent-list');
+
+  // DOM Elements - Backfill
   const btnScanBackfill = document.getElementById('btn-scan-backfill');
   const scanSummaryWrap = document.getElementById('backfill-scan-summary');
   const backfillFoundCount = document.getElementById('backfill-found-count');
@@ -51,7 +68,7 @@
   const backfillProgressStatus = document.getElementById('backfill-progress-status');
   const backfillProgressPct = document.getElementById('backfill-progress-pct');
 
-  // Settings Elements
+  // DOM Elements - Settings
   const formSettings = document.getElementById('form-settings');
   const settingToken = document.getElementById('setting-token');
   const settingOwner = document.getElementById('setting-owner');
@@ -63,6 +80,9 @@
   const btnToggleToken = document.getElementById('btn-toggle-token');
   const btnTestConnection = document.getElementById('btn-test-connection');
   const settingsAlert = document.getElementById('settings-alert');
+
+  // Circumference for r=52 SVG circle (2 * PI * 52)
+  const CIRCUMFERENCE = 2 * Math.PI * 52; // ~326.726
 
   // ==========================================
   // Tab Switching
@@ -78,8 +98,8 @@
       const targetPane = document.getElementById(`pane-${targetTab}`);
       if (targetPane) targetPane.classList.add('active');
 
-      if (targetTab === 'queue') {
-        refreshQueueView();
+      if (targetTab === 'home') {
+        refreshHomeView();
       }
     });
   });
@@ -91,14 +111,12 @@
     const isPaused = await localQueue.isSyncPaused();
     if (isPaused) {
       btnToggleSync.classList.add('is-paused');
-      syncIndicator.style.color = '#f59e0b';
       syncStatusText.textContent = 'Paused';
-      btnToggleSync.title = 'Syncing is paused. Click to resume automatic sync.';
+      btnToggleSync.title = 'Syncing paused. Click to activate.';
     } else {
       btnToggleSync.classList.remove('is-paused');
-      syncIndicator.style.color = '#10b981';
       syncStatusText.textContent = 'Active';
-      btnToggleSync.title = 'Syncing is active. Click to pause automatic sync.';
+      btnToggleSync.title = 'Syncing active. Click to pause.';
     }
   }
 
@@ -108,182 +126,187 @@
     await updateSyncStatusUI();
 
     if (isPaused) {
-      // User just unpaused: trigger sync
-      triggerQueueProcessing();
+      triggerSyncNow();
     }
   });
 
   // ==========================================
-  // Queue Rendering & Management
+  // Donut Chart Renderer
   // ==========================================
-  async function refreshQueueView() {
-    const [counts, queue] = await Promise.all([
+  function renderDonutChart(counts) {
+    const easy = counts.easy || 0;
+    const medium = counts.medium || 0;
+    const hard = counts.hard || 0;
+    const total = counts.total || (easy + medium + hard);
+
+    chartTotalCount.textContent = total;
+    legendEasyCount.textContent = easy;
+    legendMediumCount.textContent = medium;
+    legendHardCount.textContent = hard;
+
+    if (total === 0) {
+      donutEasy.style.strokeDasharray = `0 ${CIRCUMFERENCE}`;
+      donutMedium.style.strokeDasharray = `0 ${CIRCUMFERENCE}`;
+      donutHard.style.strokeDasharray = `0 ${CIRCUMFERENCE}`;
+      return;
+    }
+
+    const easyLen = (easy / total) * CIRCUMFERENCE;
+    const medLen = (medium / total) * CIRCUMFERENCE;
+    const hardLen = (hard / total) * CIRCUMFERENCE;
+
+    // Easy segment starts at 0
+    donutEasy.style.strokeDasharray = `${easyLen} ${CIRCUMFERENCE - easyLen}`;
+    donutEasy.style.strokeDashoffset = '0';
+
+    // Medium segment starts right after Easy
+    donutMedium.style.strokeDasharray = `${medLen} ${CIRCUMFERENCE - medLen}`;
+    donutMedium.style.strokeDashoffset = `-${easyLen}`;
+
+    // Hard segment starts right after Medium
+    donutHard.style.strokeDasharray = `${hardLen} ${CIRCUMFERENCE - hardLen}`;
+    donutHard.style.strokeDashoffset = `-${easyLen + medLen}`;
+  }
+
+  // ==========================================
+  // Recently Synced (Last 10) Renderer
+  // ==========================================
+  async function renderRecentlySynced() {
+    const last10 = await localQueue.getLastSynced(10);
+
+    if (!last10 || last10.length === 0) {
+      recentList.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-text">No synced submissions yet.</div>
+          <div class="empty-sub">Solve practice problems on LeetCode to auto-backup.</div>
+        </div>
+      `;
+      return;
+    }
+
+    recentList.innerHTML = '';
+    for (const item of last10) {
+      const el = document.createElement('div');
+      el.className = 'recent-item';
+
+      const frontendId = item.frontendId || item.problemId || '?';
+      const title = item.problemTitle || 'Solution';
+      const diff = (item.difficulty || 'Medium').toLowerCase();
+      const diffLabel = diff.charAt(0).toUpperCase() + diff.slice(1);
+      const diffClass = diff === 'easy' ? 'diff-easy' : diff === 'hard' ? 'diff-hard' : 'diff-medium';
+      const lang = item.language || item.extension || 'code';
+      const timeStr = item.timestamp ? formatRelativeTime(item.timestamp * 1000) : (item.addedAt ? formatRelativeTime(item.addedAt) : 'Synced');
+
+      el.innerHTML = `
+        <div class="recent-item-top">
+          <span class="recent-item-title" title="${escapeHtml(title)}">
+            #${frontendId} ${escapeHtml(title)}
+          </span>
+          <span class="diff-badge ${diffClass}">${diffLabel}</span>
+        </div>
+        <div class="recent-item-bottom">
+          <span class="lang-pill">${escapeHtml(lang)}</span>
+          ${item.runtime ? `<span>${escapeHtml(item.runtime)}</span>` : ''}
+          <span class="recent-time">${timeStr}</span>
+        </div>
+      `;
+
+      recentList.appendChild(el);
+    }
+  }
+
+  // ==========================================
+  // Home View Refresh
+  // ==========================================
+  async function refreshHomeView() {
+    const [counts, difficultyCounts] = await Promise.all([
       localQueue.getCounts(),
-      localQueue.getQueue()
+      localQueue.getDifficultyCounts()
     ]);
 
-    // Update stats counters
+    // 1. Stats strip
     statSynced.textContent = counts.synced;
     statPending.textContent = counts.pending;
     statFailed.textContent = counts.failed;
 
-    // Update tab badge
-    const activeCount = counts.pending + counts.failed;
-    if (activeCount > 0) {
+    // Update tab badge if there are pending or failed items
+    const activeAlertCount = counts.pending + counts.failed;
+    if (activeAlertCount > 0) {
       queueBadge.style.display = 'inline-block';
-      queueBadge.textContent = activeCount;
-      if (counts.failed > 0) {
-        queueBadge.className = 'tab-badge badge-red';
-      } else {
-        queueBadge.className = 'tab-badge badge-amber';
-      }
+      queueBadge.textContent = activeAlertCount;
+      queueBadge.className = counts.failed > 0 ? 'tab-badge badge-red' : 'tab-badge badge-amber';
     } else {
       queueBadge.style.display = 'none';
     }
 
-    // Toggle "Retry All" visibility
+    // Toggle "Retry Failed" visibility
     btnRetryAll.style.display = counts.failed > 0 ? 'inline-flex' : 'none';
 
-    // Filter queue
-    let filtered = queue;
-    if (currentFilter !== 'all') {
-      filtered = queue.filter(item => item.status === currentFilter);
-    }
+    // 3. LeetCode circular chart
+    renderDonutChart(difficultyCounts);
 
-    if (filtered.length === 0) {
-      let emptyMsg = 'No submissions in queue yet.';
-      if (currentFilter === 'pending') emptyMsg = 'No pending submissions.';
-      else if (currentFilter === 'failed') emptyMsg = 'No failed submissions.';
-      else if (currentFilter === 'synced') emptyMsg = 'No synced submissions yet.';
-
-      queueList.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">📦</div>
-          <div>${emptyMsg}</div>
-          <div style="font-size: 11px; margin-top: 4px;">Solve practice problems on LeetCode to auto-backup!</div>
-        </div>
-      `;
-      return;
-    }
-
-    queueList.innerHTML = '';
-    for (const item of filtered) {
-      const el = document.createElement('div');
-      el.className = `queue-item status-${item.status}`;
-
-      const dateStr = item.addedAt ? formatRelativeTime(item.addedAt) : 'Recently';
-      const statusLabel = item.status === 'synced' ? 'Synced' :
-        item.status === 'pending' ? 'Pending' :
-        item.status === 'syncing' ? 'Syncing...' : 'Failed';
-
-      const tagClass = `tag-${item.status}`;
-      const frontendId = item.frontendId || item.problemId || '?';
-      const title = item.problemTitle || 'LeetCode Problem';
-      const lang = item.language || 'code';
-
-      let errorHtml = '';
-      if (item.status === 'failed') {
-        errorHtml = `
-          <div class="queue-error-banner">
-            <span>${escapeHtml(item.lastError || 'Upload failed')}</span>
-            <button class="btn-retry-item" data-id="${item.submissionId}">Retry</button>
-          </div>
-        `;
-      }
-
-      el.innerHTML = `
-        <div class="queue-item-header">
-          <div class="queue-title" title="${escapeHtml(title)}">
-            #${frontendId} ${escapeHtml(title)}
-          </div>
-          <span class="queue-status-tag ${tagClass}">${statusLabel}</span>
-        </div>
-        <div class="queue-item-meta">
-          <span class="lang">${escapeHtml(lang)}</span>
-          <span>#${item.submissionId}</span>
-          ${item.runtime ? `<span>${escapeHtml(item.runtime)}</span>` : ''}
-          <span style="margin-left: auto;">${dateStr}</span>
-        </div>
-        ${errorHtml}
-      `;
-
-      queueList.appendChild(el);
-    }
-
-    // Attach individual retry handlers
-    queueList.querySelectorAll('.btn-retry-item').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        const id = e.target.getAttribute('data-id');
-        await localQueue.markForRetry(id);
-        await refreshQueueView();
-        triggerQueueProcessing();
-      });
-    });
+    // 4. Recently synced (last 10)
+    await renderRecentlySynced();
   }
 
-  // Filter chips click handler
-  filterChips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      filterChips.forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      currentFilter = chip.getAttribute('data-filter');
-      refreshQueueView();
-    });
-  });
-
-  // Retry all failed
-  btnRetryAll.addEventListener('click', async () => {
-    btnRetryAll.disabled = true;
-    await localQueue.retryAllFailed();
-    await refreshQueueView();
-    await triggerQueueProcessing();
-    btnRetryAll.disabled = false;
-  });
-
-  // Sync now button
-  btnSyncNow.addEventListener('click', async () => {
+  // ==========================================
+  // "Sync Now" & Queue Processing
+  // ==========================================
+  async function triggerSyncNow() {
     btnSyncNow.disabled = true;
-    btnSyncNow.textContent = 'Syncing...';
-    try {
-      await triggerQueueProcessing();
-    } finally {
-      btnSyncNow.disabled = false;
-      btnSyncNow.textContent = 'Sync Now';
-    }
-  });
-
-  async function triggerQueueProcessing() {
-    const settings = await settingsManager.getSettings();
-    if (!settings.githubToken || !settings.repoOwner || !settings.repoName) {
-      return;
-    }
+    btnSyncText.textContent = 'Syncing...';
 
     try {
-      await new Promise((resolve, reject) => {
+      const settings = await settingsManager.getSettings();
+      if (!settings.githubToken || !settings.repoOwner || !settings.repoName) {
+        // Prompt to configure settings
+        return;
+      }
+
+      // First hydrate from GitHub remote state (fetches any existing repo files)
+      try {
+        await new Promise((resolve) => {
+          chrome.runtime.sendMessage({ type: 'SYNC_GITHUB_STATE' }, (res) => {
+            resolve(res);
+          });
+        });
+      } catch (e) {
+        console.warn('[LeetCode-Backup] Sync state message warning:', e);
+      }
+
+      // Then process any pending items
+      await new Promise((resolve) => {
         chrome.runtime.sendMessage({ type: 'PROCESS_QUEUE' }, (res) => {
-          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
           resolve(res);
         });
       });
-    } catch (e) {
-      // Fallback: run directly in popup if background message fails
-      const uploader = new GitHubUploader({
-        token: settings.githubToken,
-        owner: settings.repoOwner,
-        repo: settings.repoName,
-        branch: settings.branch || 'main'
-      });
-      await uploader.processQueue(localQueue);
+
+      await refreshHomeView();
+    } finally {
+      btnSyncNow.disabled = false;
+      btnSyncText.textContent = 'Sync Now';
     }
-    await refreshQueueView();
   }
+
+  btnSyncNow.addEventListener('click', () => {
+    triggerSyncNow();
+  });
+
+  // Retry failed items
+  btnRetryAll.addEventListener('click', async () => {
+    btnRetryAll.disabled = true;
+    await localQueue.retryAllFailed();
+    await refreshHomeView();
+    await triggerSyncNow();
+    btnRetryAll.disabled = false;
+  });
 
   // ==========================================
   // Historical Backfill Workflow
   // ==========================================
   btnScanBackfill.addEventListener('click', async () => {
     btnScanBackfill.disabled = true;
-    btnScanBackfill.textContent = '⏳ Scanning LeetCode History...';
+    btnScanBackfill.textContent = 'Scanning Submissions...';
 
     try {
       let offset = 0;
@@ -306,7 +329,7 @@
         if (!hasMore) break;
       }
 
-      // Deduplicate found by ID
+      // Deduplicate found submissions by ID
       const uniqueFoundMap = new Map();
       allFound.forEach(s => {
         if (s.id && !uniqueFoundMap.has(String(s.id))) {
@@ -315,7 +338,7 @@
       });
       const uniqueFound = Array.from(uniqueFoundMap.values());
 
-      // Compare with synced IDs and queue
+      // Query synced IDs and queue
       const syncedIds = await localQueue.getSyncedIds();
       const existingQueue = await localQueue.getQueue();
       const existingQueueIds = new Set(existingQueue.map(q => String(q.submissionId)));
@@ -335,17 +358,17 @@
 
       if (unbacked.length > 0) {
         btnStartBackfill.style.display = 'block';
-        btnStartBackfill.textContent = `🚀 Backfill ${unbacked.length} Submissions`;
+        btnStartBackfill.textContent = `Start Backfill (${unbacked.length})`;
       } else {
         btnStartBackfill.style.display = 'none';
-        btnScanBackfill.textContent = '✓ All Found Submissions Backed Up';
+        btnScanBackfill.textContent = 'All Found Submissions Backed Up';
       }
     } catch (err) {
       alert(`Failed to scan submissions: ${err.message}`);
     } finally {
       btnScanBackfill.disabled = false;
-      if (btnScanBackfill.textContent.startsWith('⏳')) {
-        btnScanBackfill.textContent = '🔍 Scan Accepted Submissions';
+      if (btnScanBackfill.textContent.startsWith('Scanning')) {
+        btnScanBackfill.textContent = 'Scan Submissions';
       }
     }
   });
@@ -394,17 +417,13 @@
       backfillProgressPct.textContent = `${pct}% (${completed}/${total})`;
 
       try {
-        // Fetch full submission details
         const details = await submissionReader.getSubmissionDetails(sub.id, {
           title: sub.title,
           problemSlug: sub.titleSlug,
           lang: sub.lang
         });
 
-        // Enqueue item
         const queuedItem = await localQueue.enqueue(details);
-
-        // Upload to GitHub
         await localQueue.updateStatus(queuedItem.submissionId, 'syncing');
         await uploader.uploadSubmission(queuedItem);
         await localQueue.updateStatus(queuedItem.submissionId, 'synced');
@@ -415,7 +434,6 @@
         await localQueue.updateStatus(sub.id, 'failed', { error: err.message });
       }
 
-      // Update state for resumption
       await localQueue.setBackfillState({
         processedCount: completed
       });
@@ -430,16 +448,16 @@
     if (completed === total) {
       backfillProgressBar.style.width = '100%';
       backfillProgressPct.textContent = `100% (${total}/${total})`;
-      backfillProgressStatus.textContent = `✓ Backfill complete! Processed ${total} submissions.`;
+      backfillProgressStatus.textContent = `Backfill complete! Processed ${total} submissions.`;
       await localQueue.resetBackfillState();
       scannedSubmissionsToBackfill = [];
     } else if (backfillPaused) {
       backfillProgressStatus.textContent = `Paused at ${completed}/${total} submissions.`;
       btnStartBackfill.style.display = 'block';
-      btnStartBackfill.textContent = '▶ Resume Backfill';
+      btnStartBackfill.textContent = 'Resume Backfill';
     }
 
-    refreshQueueView();
+    refreshHomeView();
   });
 
   btnPauseBackfill.addEventListener('click', () => {
@@ -447,7 +465,7 @@
     isBackfillRunning = false;
     btnPauseBackfill.style.display = 'none';
     btnStartBackfill.style.display = 'block';
-    btnStartBackfill.textContent = '▶ Resume Backfill';
+    btnStartBackfill.textContent = 'Resume Backfill';
     backfillProgressStatus.textContent = 'Pausing backfill...';
   });
 
@@ -492,7 +510,7 @@
   btnTestConnection.addEventListener('click', async () => {
     settingsAlert.style.display = 'none';
     btnTestConnection.disabled = true;
-    btnTestConnection.textContent = '⏳ Testing Connection...';
+    btnTestConnection.textContent = 'Testing...';
 
     const testConfig = {
       githubToken: settingToken.value,
@@ -504,12 +522,12 @@
 
     const res = await settingsManager.testConnection(testConfig);
     btnTestConnection.disabled = false;
-    btnTestConnection.textContent = '🔌 Test GitHub Connection';
+    btnTestConnection.textContent = 'Test Connection';
 
     if (res.ok) {
-      showSettingsAlert('success', `✓ ${res.message}`);
+      showSettingsAlert('success', res.message);
     } else {
-      showSettingsAlert('error', `✕ ${res.message}`);
+      showSettingsAlert('error', res.message);
     }
   });
 
@@ -532,10 +550,10 @@
     }
 
     await settingsManager.saveSettings(newSettings);
-    showSettingsAlert('success', '✓ Settings saved successfully.');
+    showSettingsAlert('success', 'Settings saved successfully.');
 
-    // If there are pending items, attempt processing now
-    triggerQueueProcessing();
+    // Hydrate state from GitHub with new settings
+    triggerSyncNow();
   });
 
   // ==========================================
@@ -559,14 +577,26 @@
   }
 
   // ==========================================
-  // Initial Page Load & Live Sync Listeners
+  // Initial Page Load & Auto-Hydration
   // ==========================================
   async function init() {
     await Promise.all([
       updateSyncStatusUI(),
-      refreshQueueView(),
+      refreshHomeView(),
       loadSettingsIntoForm()
     ]);
+
+    // Auto-hydrate state from GitHub if configured
+    const settings = await settingsManager.getSettings();
+    if (settings.githubToken && settings.repoOwner && settings.repoName) {
+      try {
+        chrome.runtime.sendMessage({ type: 'SYNC_GITHUB_STATE' }, (res) => {
+          if (res && res.success) {
+            refreshHomeView();
+          }
+        });
+      } catch (e) {}
+    }
   }
 
   // Real-time UI updates when queue or settings change in background
@@ -574,7 +604,7 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'local') {
         if (changes['leetcode_backup_queue']) {
-          refreshQueueView();
+          refreshHomeView();
         }
         if (changes['leetcode_backup_settings']) {
           updateSyncStatusUI();

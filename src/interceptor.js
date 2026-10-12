@@ -12,6 +12,12 @@
   if (window.__LEETCODE_BACKUP_INTERCEPTOR_LOADED__) return;
   window.__LEETCODE_BACKUP_INTERCEPTOR_LOADED__ = true;
 
+  // Strict contest exclusion: completely inactive on any contest page
+  const currentPath = (window.location.pathname || '').toLowerCase();
+  if (currentPath === '/contest' || currentPath.startsWith('/contest/') || (window.location.href || '').toLowerCase().includes('/contest')) {
+    return;
+  }
+
   function notifyAccepted(submissionId, source) {
     if (!submissionId) return;
     try {

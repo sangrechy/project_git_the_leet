@@ -143,6 +143,7 @@
         frontendId: String(itemData.frontendId || itemData.problemId),
         problemTitle: itemData.problemTitle,
         problemSlug: itemData.problemSlug,
+        difficulty: itemData.difficulty || 'Medium',
         language: itemData.language,
         extension: itemData.extension,
         code: itemData.code,
@@ -282,6 +283,119 @@
       }
 
       return counts;
+    }
+
+    /**
+     * Retrieves the last N synced items sorted by timestamp descending
+     * @param {number} [limit=10]
+     * @returns {Promise<Array>}
+     */
+    async getLastSynced(limit = 10) {
+      const queue = await this.getQueue();
+      return queue
+        .filter(item => item.status === 'synced')
+        .sort((a, b) => (b.timestamp || b.addedAt || 0) - (a.timestamp || a.addedAt || 0))
+        .slice(0, limit);
+    }
+
+    /**
+     * Calculates difficulty breakdown (easy, medium, hard, total) across all synced problems
+     * @returns {Promise<{ easy: number, medium: number, hard: number, total: number }>}
+     */
+    async getDifficultyCounts() {
+      const queue = await this.getQueue();
+      const synced = queue.filter(item => item.status === 'synced');
+      const seenProblems = new Set();
+      const counts = { easy: 0, medium: 0, hard: 0, total: 0 };
+
+      for (const item of synced) {
+        const pKey = String(item.frontendId || item.problemId || item.problemSlug);
+        if (seenProblems.has(pKey)) continue;
+        seenProblems.add(pKey);
+
+        const diff = (item.difficulty || '').toLowerCase();
+        if (diff === 'easy') counts.easy++;
+        else if (diff === 'hard') counts.hard++;
+        else counts.medium++;
+        counts.total++;
+      }
+
+      return counts;
+    }
+
+    /**
+     * Syncs remote problem state from GitHub into local storage and queue.
+     * Prevents re-uploading problems that already exist on GitHub even after an extension reset.
+     *
+     * @param {Array<Object>} remoteProblems - Array of problem summaries from GitHub
+     * @returns {Promise<{ imported: number, total: number }>}
+     */
+    async syncFromRemote(remoteProblems = []) {
+      if (!Array.isArray(remoteProblems) || remoteProblems.length === 0) return { imported: 0, total: 0 };
+      if (!this._isContextValid() || !this.storage) return { imported: 0, total: 0 };
+
+      const [existingQueue, existingSyncedIds] = await Promise.all([
+        this.getQueue(),
+        this.getSyncedIds()
+      ]);
+
+      const syncedIdsSet = new Set(existingSyncedIds);
+      const queueMap = new Map();
+      existingQueue.forEach(item => {
+        queueMap.set(String(item.submissionId), item);
+      });
+
+      let imported = 0;
+      for (const rp of remoteProblems) {
+        const subId = String(rp.submissionId || rp.submission_id || '');
+        if (subId) syncedIdsSet.add(subId);
+
+        const pId = String(rp.frontendId || rp.frontend_id || rp.problemId || '0');
+        const existingItem = subId ? queueMap.get(subId) : null;
+
+        if (!existingItem) {
+          const item = {
+            submissionId: subId || `git_${rp.folderName || pId}`,
+            problemId: pId,
+            frontendId: pId,
+            problemTitle: rp.problemTitle || rp.problem_title || rp.title || rp.folderName || 'Solution',
+            problemSlug: rp.problemSlug || rp.problem_slug || '',
+            difficulty: rp.difficulty || 'Medium',
+            language: rp.language || 'code',
+            extension: rp.extension || 'txt',
+            code: rp.code || '',
+            metadataJson: rp.metadataJson || '',
+            solutionPath: rp.solutionPath || '',
+            metadataPath: rp.metadataPath || '',
+            timestamp: rp.timestamp || Math.floor(Date.now() / 1000),
+            submittedAt: rp.submittedAt || rp.submitted_at || new Date().toISOString(),
+            runtime: rp.runtime || null,
+            runtimePercentile: rp.runtimePercentile || rp.runtime_percentile || null,
+            memory: rp.memory || null,
+            memoryPercentile: rp.memoryPercentile || rp.memory_percentile || null,
+            problemUrl: rp.problemUrl || rp.problem_url || null,
+            status: 'synced',
+            addedAt: (rp.timestamp ? rp.timestamp * 1000 : Date.now()),
+            syncedAt: Date.now(),
+            lastError: null,
+            retryCount: 0
+          };
+          queueMap.set(String(item.submissionId), item);
+          imported++;
+        } else {
+          existingItem.status = 'synced';
+          if (rp.difficulty) existingItem.difficulty = rp.difficulty;
+        }
+      }
+
+      const mergedQueue = Array.from(queueMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      await Promise.all([
+        this.storage.set({ [STORAGE_KEYS.QUEUE]: mergedQueue }),
+        this.storage.set({ [STORAGE_KEYS.SYNCED_IDS]: Array.from(syncedIdsSet) })
+      ]);
+
+      console.log(`[git the leet] Synced ${imported} remote problems into local queue.`);
+      return { imported, total: mergedQueue.length };
     }
 
     /**

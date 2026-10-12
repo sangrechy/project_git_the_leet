@@ -97,10 +97,30 @@
     },
 
     /**
-     * Determines whether syncing should be allowed for a given URL
+     * Verifies that the URL is strictly an allowed practice or problemset route,
+     * and NOT a contest or other non-practice page.
+     * @param {string} url
+     * @returns {boolean}
+     */
+    isAllowedSiteRoute(url) {
+      if (!url || typeof url !== 'string') return false;
+      if (this.isContestUrl(url)) return false;
+      try {
+        const parsed = new URL(url, 'https://leetcode.com');
+        const p = parsed.pathname.toLowerCase();
+        return p.startsWith('/problems/') || p.startsWith('/problemset/');
+      } catch (e) {
+        const low = url.toLowerCase();
+        return (low.includes('/problems/') || low.includes('/problemset/')) && !low.includes('/contest');
+      }
+    },
+
+    /**
+     * Determines whether syncing should be allowed for a given URL.
+     * Strictly disallows contest pages unconditionally.
+     * Only activates on regular practice problem pages (/problems/<slug>/).
      *
      * @param {string} url - Current page URL
-     * @param {boolean} allowContests - User setting for contest syncing (default: false)
      * @returns {{
      *   allowed: boolean,
      *   reason: string,
@@ -109,31 +129,22 @@
      *   slug: string|null
      * }}
      */
-    shouldSync(url, allowContests = false) {
+    shouldSync(url) {
       const isContest = this.isContestUrl(url);
       const isPractice = this.isPracticeProblemUrl(url);
       const slug = this.extractProblemSlug(url);
 
       if (isContest) {
-        if (!allowContests) {
-          return {
-            allowed: false,
-            reason: 'Contest pages are strictly guarded and excluded by default.',
-            isContest: true,
-            isPractice: false,
-            slug
-          };
-        }
         return {
-          allowed: true,
-          reason: 'Contest page (sync enabled by user setting).',
+          allowed: false,
+          reason: 'Contest pages are strictly prohibited and disabled.',
           isContest: true,
           isPractice: false,
-          slug
+          slug: null
         };
       }
 
-      if (isPractice) {
+      if (isPractice && slug) {
         return {
           allowed: true,
           reason: 'Regular LeetCode practice problem.',
@@ -145,7 +156,7 @@
 
       return {
         allowed: false,
-        reason: 'Not a LeetCode practice problem URL.',
+        reason: 'Not an active LeetCode practice problem URL (/problems/*).',
         isContest: false,
         isPractice: false,
         slug: null
