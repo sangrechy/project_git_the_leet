@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../../styles/popup.css">
 </head>
 <body>
-  <!-- Header -->
+  <!-- Header: Enlarged Mascot Icon + Brand Title + Active Status & Last Synced Timestamp -->
   <header class="app-header">
     <div class="brand">
       <div class="brand-icon-wrap" title="git the leet">
@@ -27,110 +27,98 @@
     </div>
   </header>
 
-  <!-- Tab Navigation: Recessed Segmented Track -->
+  <!-- Segmented Navigation: 4 tactile options on a single debossed track -->
   <nav class="tabs-nav">
-    <button class="tab-btn active" data-tab="home">
-      Home
-    </button>
+    <button class="tab-btn active" data-tab="home">Home</button>
     <button class="tab-btn" data-tab="recent">
       Recent
       <span id="tab-queue-badge" class="tab-badge" style="display: none;">0</span>
     </button>
-    <button class="tab-btn" data-tab="backfill">
-      Backfill
-    </button>
-    <button class="tab-btn" data-tab="settings">
-      Settings
-    </button>
+    <button class="tab-btn" data-tab="backfill">Backfill</button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
   </nav>
 
-  <!-- TAB 1: Home (Stats Strip, Sync Now, Donut Chart, Quick Recent Link) -->
+  <!-- TAB 1: Home (Integrated precision dashboard card) -->
   <main id="pane-home" class="tab-pane active">
-    <!-- 1. Stats Strip -->
-    <div class="stats-strip">
-      <div class="stat-card stat-synced">
-        <div id="stat-synced-count" class="stat-value">0</div>
-        <div class="stat-label">Synced</div>
-      </div>
-      <div class="stat-card stat-pending">
-        <div id="stat-pending-count" class="stat-value">0</div>
-        <div class="stat-label">Pending</div>
-      </div>
-      <div class="stat-card stat-failed">
-        <div id="stat-failed-count" class="stat-value">0</div>
-        <div class="stat-label">Failed</div>
-      </div>
-    </div>
+    <div class="dashboard-card">
+      <!-- Top: LeetCode Circular Donut Gauge -->
+      <div class="gauge-section">
+        <div class="gauge-visual">
+          <svg class="donut-svg" viewBox="0 0 140 140" width="132" height="132">
+            <circle class="donut-track" cx="70" cy="70" r="52"></circle>
+            <circle id="donut-easy" class="donut-ring ring-easy" cx="70" cy="70" r="52"></circle>
+            <circle id="donut-medium" class="donut-ring ring-medium" cx="70" cy="70" r="52"></circle>
+            <circle id="donut-hard" class="donut-ring ring-hard" cx="70" cy="70" r="52"></circle>
+          </svg>
+          <div class="gauge-center">
+            <div id="chart-total-count" class="gauge-value">0</div>
+            <div class="gauge-label">Solved</div>
+          </div>
+        </div>
 
-    <!-- 2. Sync Now Prominent Button -->
-    <div class="sync-action-box">
-      <button id="btn-sync-now" class="btn-sync-prominent" title="Process pending queue & refresh state">
-        <span id="btn-sync-text" class="btn-sync-text">Sync Now</span>
-      </button>
-      <button id="btn-retry-all" class="btn-retry-subtle" title="Retry all failed uploads" style="display: none;">
-        Retry Failed
-      </button>
-    </div>
+        <div class="gauge-legend">
+          <div class="legend-row">
+            <span class="legend-dot dot-easy"></span>
+            <span class="legend-name">Easy</span>
+            <span id="legend-easy-count" class="legend-val">0</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-dot dot-medium"></span>
+            <span class="legend-name">Medium</span>
+            <span id="legend-medium-count" class="legend-val">0</span>
+          </div>
+          <div class="legend-row">
+            <span class="legend-dot dot-hard"></span>
+            <span class="legend-name">Hard</span>
+            <span id="legend-hard-count" class="legend-val">0</span>
+          </div>
+        </div>
+      </div>
 
-    <!-- 3. LeetCode Circular Pie/Donut Chart -->
-    <div class="chart-card">
-      <div class="chart-visual">
-        <svg class="donut-svg" viewBox="0 0 140 140" width="126" height="126">
-          <circle class="donut-track" cx="70" cy="70" r="52"></circle>
-          <circle id="donut-easy" class="donut-ring ring-easy" cx="70" cy="70" r="52"></circle>
-          <circle id="donut-medium" class="donut-ring ring-medium" cx="70" cy="70" r="52"></circle>
-          <circle id="donut-hard" class="donut-ring ring-hard" cx="70" cy="70" r="52"></circle>
-        </svg>
-        <div class="chart-center">
-          <div id="chart-total-count" class="chart-total">0</div>
-          <div class="chart-caption">Solved</div>
+      <!-- Middle: Integrated Metric Track (Synced / Pending / Failed) -->
+      <div class="metrics-track">
+        <div class="metric-segment metric-synced">
+          <span id="stat-synced-count" class="metric-num">0</span>
+          <span class="metric-lbl">Synced</span>
+        </div>
+        <div class="metric-divider"></div>
+        <div class="metric-segment metric-pending">
+          <span id="stat-pending-count" class="metric-num">0</span>
+          <span class="metric-lbl">Pending</span>
+        </div>
+        <div class="metric-divider"></div>
+        <div class="metric-segment metric-failed">
+          <span id="stat-failed-count" class="metric-num">0</span>
+          <span class="metric-lbl">Failed</span>
         </div>
       </div>
-      <div class="chart-legend">
-        <div class="legend-item">
-          <span class="legend-bullet bullet-easy"></span>
-          <span class="legend-name">Easy</span>
-          <span id="legend-easy-count" class="legend-count">0</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-bullet bullet-medium"></span>
-          <span class="legend-name">Medium</span>
-          <span id="legend-medium-count" class="legend-count">0</span>
-        </div>
-        <div class="legend-item">
-          <span class="legend-bullet bullet-hard"></span>
-          <span class="legend-name">Hard</span>
-          <span id="legend-hard-count" class="legend-count">0</span>
-        </div>
-      </div>
-    </div>
 
-    <!-- Home Quick Link to Recent Tab -->
-    <div class="home-recent-banner" id="btn-goto-recent" title="Open full list of synced submissions">
-      <div class="banner-content">
-        <span class="banner-title">Recently Synced Submissions</span>
-        <span class="banner-desc" id="home-recent-preview">View solution history & details</span>
+      <!-- Bottom: Tactile Action Controls -->
+      <div class="action-row">
+        <button id="btn-sync-now" class="btn-nm btn-sync-action" title="Sync pending items and reconcile with GitHub">
+          <span id="btn-sync-text">Sync Now</span>
+        </button>
+        <button id="btn-retry-all" class="btn-nm btn-retry-action" title="Retry failed submissions" style="display: none;">
+          Retry
+        </button>
       </div>
-      <span class="banner-arrow">→</span>
     </div>
   </main>
 
-  <!-- TAB 2: Recent Submissions (Dedicated Screen) -->
+  <!-- TAB 2: Recent (Dedicated feed of synced problems) -->
   <section id="pane-recent" class="tab-pane">
-    <div class="recent-page-card">
-      <div class="recent-page-header">
-        <div class="recent-page-title-wrap">
-          <span class="recent-page-title">Recently Synced</span>
-          <span class="recent-page-tag" id="recent-count-tag">Last 10</span>
-        </div>
-        <div class="recent-filter-chips">
+    <div class="recent-container">
+      <div class="recent-controls-bar">
+        <div class="recent-tag" id="recent-count-tag">0 items</div>
+        <div class="recent-filter-pills">
           <button class="filter-chip active" data-filter="all">All</button>
           <button class="filter-chip" data-filter="easy">Easy</button>
           <button class="filter-chip" data-filter="medium">Med</button>
           <button class="filter-chip" data-filter="hard">Hard</button>
         </div>
       </div>
-      <div id="recent-list" class="recent-list-scroll">
+
+      <div id="recent-list" class="recent-feed">
         <div class="empty-state">
           <div class="empty-text">No synced submissions yet.</div>
           <div class="empty-sub">Solve practice problems on LeetCode to auto-backup.</div>
@@ -139,15 +127,17 @@
     </div>
   </section>
 
-  <!-- TAB 3: Historical Backfill -->
+  <!-- TAB 3: Backfill -->
   <section id="pane-backfill" class="tab-pane">
-    <div class="backfill-card">
-      <div class="section-heading">Historical Backfill</div>
-      <div class="section-desc">
-        Scan your logged-in LeetCode account for previously accepted solutions and backfill them to your GitHub repository.
+    <div class="backfill-panel">
+      <div class="panel-header">
+        <div class="panel-title">Historical Backfill</div>
+        <div class="panel-desc">
+          Scan your LeetCode account for previously accepted solutions and backfill them to your GitHub repository.
+        </div>
       </div>
 
-      <button id="btn-scan-backfill" class="btn-secondary">
+      <button id="btn-scan-backfill" class="btn-nm btn-full">
         Scan Submissions
       </button>
 
@@ -168,11 +158,11 @@
           </div>
         </div>
 
-        <button id="btn-start-backfill" class="btn-primary" style="margin-top: 12px;">
+        <button id="btn-start-backfill" class="btn-nm btn-accent btn-full" style="margin-top: 12px;">
           Start Backfill
         </button>
 
-        <button id="btn-pause-backfill" class="btn-secondary" style="display: none; margin-top: 12px;">
+        <button id="btn-pause-backfill" class="btn-nm btn-full" style="display: none; margin-top: 12px;">
           Pause Backfill
         </button>
       </div>
@@ -198,7 +188,7 @@
   <section id="pane-settings" class="tab-pane">
     <div id="settings-alert" class="alert" style="display: none;"></div>
 
-    <form id="form-settings" autocomplete="off">
+    <form id="form-settings" autocomplete="off" class="settings-panel">
       <div class="form-group">
         <label class="form-label" for="setting-token">
           GitHub Personal Access Token <span class="req">*</span>
@@ -248,11 +238,11 @@
       </div>
 
       <div class="settings-actions">
-        <button type="button" id="btn-test-connection" class="btn-secondary">
+        <button type="button" id="btn-test-connection" class="btn-nm btn-full">
           Test Connection
         </button>
 
-        <button type="submit" id="btn-save-settings" class="btn-primary">
+        <button type="submit" id="btn-save-settings" class="btn-nm btn-accent btn-full">
           Save Settings
         </button>
       </div>
