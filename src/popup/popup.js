@@ -270,6 +270,9 @@
           <div class="empty-sub">Solve practice problems on LeetCode to auto-backup.</div>
         </div>
       `;
+      if (hangingScrollbar) {
+        setTimeout(() => hangingScrollbar.update(), 50);
+      }
       return;
     }
 
@@ -777,16 +780,47 @@
       const trackRect = this.track.getBoundingClientRect();
       const carriageHeight = this.carriage.offsetHeight || 40;
       const maxTravel = Math.max(1, trackRect.height - carriageHeight);
-      const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
-      const clientHeight = document.documentElement.clientHeight || document.body.clientHeight;
-      const maxScroll = Math.max(1, scrollHeight - clientHeight);
-      return { trackRect, carriageHeight, maxTravel, maxScroll };
+
+      const docHeight = document.documentElement.scrollHeight || 0;
+      const bodyHeight = document.body.scrollHeight || 0;
+      const scrollHeight = Math.max(docHeight, bodyHeight);
+
+      const docClient = document.documentElement.clientHeight || 0;
+      const bodyClient = document.body.clientHeight || window.innerHeight || 0;
+      const clientHeight = Math.max(docClient, bodyClient);
+
+      const rawMaxScroll = scrollHeight - clientHeight;
+      const needsScroll = rawMaxScroll > 6;
+
+      return {
+        trackRect,
+        carriageHeight,
+        maxTravel,
+        maxScroll: Math.max(1, rawMaxScroll),
+        needsScroll
+      };
+    }
+
+    _getScrollTop() {
+      return document.body.scrollTop || window.scrollY || document.documentElement.scrollTop || 0;
+    }
+
+    _setScrollTop(val) {
+      document.body.scrollTop = val;
+      document.documentElement.scrollTop = val;
+      window.scrollTo(0, val);
     }
 
     _updateCarriagePosition() {
-      if (this.isDragging) return;
       const metrics = this._getScrollMetrics();
-      const currentScroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop;
+      if (!metrics.needsScroll) {
+        this.track.style.display = 'none';
+        return;
+      }
+      this.track.style.display = 'flex';
+
+      if (this.isDragging) return;
+      const currentScroll = this._getScrollTop();
       const ratio = metrics.maxScroll > 0 ? Math.min(1, Math.max(0, currentScroll / metrics.maxScroll)) : 0;
       const topPos = ratio * metrics.maxTravel;
       this.carriage.style.top = `${topPos}px`;
@@ -796,20 +830,21 @@
       const clampedTop = Math.max(0, Math.min(metrics.maxTravel, thumbTop));
       this.carriage.style.top = `${clampedTop}px`;
       const scrollRatio = clampedTop / metrics.maxTravel;
-      const targetScroll = scrollRatio * metrics.maxScroll;
-      window.scrollTo(0, targetScroll);
-      document.documentElement.scrollTop = targetScroll;
-      document.body.scrollTop = targetScroll;
+      const targetScroll = Math.round(scrollRatio * metrics.maxScroll);
+      this._setScrollTop(targetScroll);
     }
 
     _initScrollTracking() {
       const onScroll = () => this._updateCarriagePosition();
       window.addEventListener('scroll', onScroll, { passive: true });
       document.body.addEventListener('scroll', onScroll, { passive: true });
+      document.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', onScroll);
 
       // Pointer drag on carriage
       this.carriage.addEventListener('pointerdown', (e) => {
+        const metrics = this._getScrollMetrics();
+        if (!metrics.needsScroll) return;
         this.isDragging = true;
         this.carriage.setPointerCapture(e.pointerId);
         this.carriage.classList.add('is-dragging');
