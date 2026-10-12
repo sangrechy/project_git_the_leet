@@ -48,10 +48,12 @@
           <div class="gauge-section">
             <div class="gauge-visual">
               <svg class="donut-svg" viewBox="0 0 144 144" width="134" height="134">
-                <circle class="donut-track" cx="72" cy="72" r="58"></circle>
-                <circle id="donut-easy" class="donut-ring ring-easy" cx="72" cy="72" r="58"></circle>
-                <circle id="donut-medium" class="donut-ring ring-medium" cx="72" cy="72" r="58"></circle>
-                <circle id="donut-hard" class="donut-ring ring-hard" cx="72" cy="72" r="58"></circle>
+                <g class="donut-group" transform="rotate(135 72 72)">
+                  <circle class="donut-track" cx="72" cy="72" r="58"></circle>
+                  <circle id="donut-easy" class="donut-ring ring-easy" cx="72" cy="72" r="58"></circle>
+                  <circle id="donut-medium" class="donut-ring ring-medium" cx="72" cy="72" r="58"></circle>
+                  <circle id="donut-hard" class="donut-ring ring-hard" cx="72" cy="72" r="58"></circle>
+                </g>
               </svg>
               <div class="gauge-center">
                 <div class="wheel-hamster-wrap" title="Jane running in the LeetCode wheel!">
@@ -61,8 +63,11 @@
                   </picture>
                 </div>
                 <div class="gauge-stats-bottom">
-                  <span id="chart-total-count" class="gauge-value">0</span>
-                  <span class="gauge-label">Problems Solved</span>
+                  <div class="gauge-count-row">
+                    <span id="chart-total-count" class="gauge-value">0</span>
+                    <span id="chart-max-count" class="gauge-total">/3400</span>
+                  </div>
+                  <span class="gauge-label">Solved</span>
                 </div>
               </div>
             </div>

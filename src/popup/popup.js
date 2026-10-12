@@ -49,6 +49,7 @@
   const donutMedium = document.getElementById('donut-medium');
   const donutHard = document.getElementById('donut-hard');
   const chartTotalCount = document.getElementById('chart-total-count');
+  const chartMaxCount = document.getElementById('chart-max-count');
   const legendEasyCount = document.getElementById('legend-easy-count');
   const legendMediumCount = document.getElementById('legend-medium-count');
   const legendHardCount = document.getElementById('legend-hard-count');
@@ -85,8 +86,10 @@
   const btnTestConnection = document.getElementById('btn-test-connection');
   const settingsAlert = document.getElementById('settings-alert');
 
-  // Circumference for r=58 SVG circle (2 * PI * 58)
-  const CIRCUMFERENCE = 2 * Math.PI * 58; // ~364.425
+  // SVG 3/4 circle open gauge calculations for r=58 circle
+  const FULL_CIRCUMFERENCE = 2 * Math.PI * 58; // ~364.425
+  const GAUGE_ARC = FULL_CIRCUMFERENCE * 0.75; // ~273.319 (270 degrees sweep)
+  const DEFAULT_TOTAL_PROBLEMS = 3400;
 
   // ==========================================
   // Tab Switching
@@ -197,38 +200,84 @@
   });
 
   // ==========================================
-  // Donut Chart Renderer
+  // 3/4 Circular Gauge Renderer (LeetCode Style)
   // ==========================================
   function renderDonutChart(counts) {
-    const easy = counts.easy || 0;
-    const medium = counts.medium || 0;
-    const hard = counts.hard || 0;
-    const total = counts.total || (easy + medium + hard);
+    const easy = Number(counts.easy) || 0;
+    const medium = Number(counts.medium) || 0;
+    const hard = Number(counts.hard) || 0;
+    const totalSolved = (typeof counts.total === 'number' && counts.total >= 0)
+      ? counts.total
+      : (easy + medium + hard);
 
-    chartTotalCount.textContent = total;
-    legendEasyCount.textContent = easy;
-    legendMediumCount.textContent = medium;
-    legendHardCount.textContent = hard;
+    if (chartTotalCount) chartTotalCount.textContent = totalSolved;
+    if (legendEasyCount) legendEasyCount.textContent = easy;
+    if (legendMediumCount) legendMediumCount.textContent = medium;
+    if (legendHardCount) legendHardCount.textContent = hard;
 
-    if (total === 0) {
-      donutEasy.style.strokeDasharray = `0 ${CIRCUMFERENCE}`;
-      donutMedium.style.strokeDasharray = `0 ${CIRCUMFERENCE}`;
-      donutHard.style.strokeDasharray = `0 ${CIRCUMFERENCE}`;
+    const totalAvailable = counts.totalAvailable || DEFAULT_TOTAL_PROBLEMS;
+    if (chartMaxCount) chartMaxCount.textContent = `/${totalAvailable}`;
+
+    if (totalSolved === 0) {
+      if (donutEasy) {
+        donutEasy.style.strokeDasharray = `0 ${FULL_CIRCUMFERENCE}`;
+        donutEasy.style.strokeDashoffset = '0';
+      }
+      if (donutMedium) {
+        donutMedium.style.strokeDasharray = `0 ${FULL_CIRCUMFERENCE}`;
+        donutMedium.style.strokeDashoffset = '0';
+      }
+      if (donutHard) {
+        donutHard.style.strokeDasharray = `0 ${FULL_CIRCUMFERENCE}`;
+        donutHard.style.strokeDashoffset = '0';
+      }
       return;
     }
 
-    const easyLen = (easy / total) * CIRCUMFERENCE;
-    const medLen = (medium / total) * CIRCUMFERENCE;
-    const hardLen = (hard / total) * CIRCUMFERENCE;
+    // Allocate progress along the 270-degree arc (GAUGE_ARC)
+    // For small counts, ensure minimum visible arc so difficulty segments are discernible
+    const rawArc = (totalSolved / totalAvailable) * GAUGE_ARC;
+    const minArc = Math.min(26, GAUGE_ARC);
+    const progressArc = Math.min(GAUGE_ARC, Math.max(rawArc, minArc));
 
-    donutEasy.style.strokeDasharray = `${easyLen} ${CIRCUMFERENCE - easyLen}`;
-    donutEasy.style.strokeDashoffset = '0';
+    const easyLen = (easy / totalSolved) * progressArc;
+    const medLen = (medium / totalSolved) * progressArc;
+    const hardLen = (hard / totalSolved) * progressArc;
 
-    donutMedium.style.strokeDasharray = `${medLen} ${CIRCUMFERENCE - medLen}`;
-    donutMedium.style.strokeDashoffset = `-${easyLen}`;
+    let currentOffset = 0;
 
-    donutHard.style.strokeDasharray = `${hardLen} ${CIRCUMFERENCE - hardLen}`;
-    donutHard.style.strokeDashoffset = `-${easyLen + medLen}`;
+    if (donutEasy) {
+      if (easyLen > 0) {
+        donutEasy.style.strokeDasharray = `${easyLen} ${FULL_CIRCUMFERENCE - easyLen}`;
+        donutEasy.style.strokeDashoffset = `-${currentOffset}`;
+        currentOffset += easyLen;
+      } else {
+        donutEasy.style.strokeDasharray = `0 ${FULL_CIRCUMFERENCE}`;
+        donutEasy.style.strokeDashoffset = '0';
+      }
+    }
+
+    if (donutMedium) {
+      if (medLen > 0) {
+        donutMedium.style.strokeDasharray = `${medLen} ${FULL_CIRCUMFERENCE - medLen}`;
+        donutMedium.style.strokeDashoffset = `-${currentOffset}`;
+        currentOffset += medLen;
+      } else {
+        donutMedium.style.strokeDasharray = `0 ${FULL_CIRCUMFERENCE}`;
+        donutMedium.style.strokeDashoffset = '0';
+      }
+    }
+
+    if (donutHard) {
+      if (hardLen > 0) {
+        donutHard.style.strokeDasharray = `${hardLen} ${FULL_CIRCUMFERENCE - hardLen}`;
+        donutHard.style.strokeDashoffset = `-${currentOffset}`;
+        currentOffset += hardLen;
+      } else {
+        donutHard.style.strokeDasharray = `0 ${FULL_CIRCUMFERENCE}`;
+        donutHard.style.strokeDashoffset = '0';
+      }
+    }
   }
 
   // ==========================================
@@ -345,8 +394,23 @@
     btnRetryAll.style.display = counts.failed > 0 ? 'inline-flex' : 'none';
 
     // 2. LeetCode circular chart
+    try {
+      const stored = await chrome.storage.local.get('leetcode_total_questions');
+      if (stored && typeof stored.leetcode_total_questions === 'number' && stored.leetcode_total_questions > 0) {
+        difficultyCounts.totalAvailable = stored.leetcode_total_questions;
+      }
+    } catch (e) {}
     renderDonutChart(difficultyCounts);
 
+    // Optional: asynchronously refresh total count from LeetCode if active
+    if (typeof submissionReader !== 'undefined' && submissionReader.fetchTotalQuestions) {
+      submissionReader.fetchTotalQuestions().then(total => {
+        if (total && total !== difficultyCounts.totalAvailable) {
+          difficultyCounts.totalAvailable = total;
+          renderDonutChart(difficultyCounts);
+        }
+      }).catch(() => {});
+    }
 
     // 4. Update last sync time
     await updateLastSyncUI();

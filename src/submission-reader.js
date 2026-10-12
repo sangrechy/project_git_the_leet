@@ -181,6 +181,37 @@
     }
 
     /**
+     * Public GraphQL query for total questions count on LeetCode
+     * @returns {Promise<number|null>}
+     */
+    async fetchTotalQuestions() {
+      const query = `
+        query allQuestionsCount {
+          allQuestionsCount {
+            difficulty
+            count
+          }
+        }
+      `;
+      try {
+        const data = await this._graphqlQuery(query, {}, 'allQuestionsCount');
+        const list = data?.allQuestionsCount;
+        if (Array.isArray(list)) {
+          const allItem = list.find(item => (item.difficulty || '').toLowerCase() === 'all');
+          if (allItem && typeof allItem.count === 'number' && allItem.count > 0) {
+            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+              await chrome.storage.local.set({ leetcode_total_questions: allItem.count });
+            }
+            return allItem.count;
+          }
+        }
+      } catch (e) {
+        // Silently ignore if offline or not logged in
+      }
+      return null;
+    }
+
+    /**
      * Queries recent submissions for a specific problem to get the latest accepted submission ID
      *
      * @param {string} problemSlug - Problem title slug (e.g. "two-sum")
