@@ -25,13 +25,16 @@
   --shadow-light: #ffffff;
   --shadow-dark: #a3b1c6;
 
-  /* Semantic Difficulty Accents */
-  --color-easy: #00b8a3;
-  --color-easy-bg: rgba(0, 184, 163, 0.12);
-  --color-medium: #ffc01e;
-  --color-medium-bg: rgba(255, 192, 30, 0.14);
-  --color-hard: #ff375f;
-  --color-hard-bg: rgba(255, 55, 95, 0.14);
+  /* Semantic Difficulty Accents - High Contrast for Badges & Text */
+  --color-easy: #059669;
+  --color-easy-ring: #00b8a3;
+  --color-easy-bg: rgba(5, 150, 105, 0.12);
+  --color-medium: #d97706;
+  --color-medium-ring: #ffc01e;
+  --color-medium-bg: rgba(217, 119, 6, 0.14);
+  --color-hard: #e11d48;
+  --color-hard-ring: #ff375f;
+  --color-hard-bg: rgba(225, 29, 72, 0.14);
 
   /* Status Accents */
   --accent-green: #10b981;
@@ -74,12 +77,15 @@
     --shadow-light: #2f333a;
     --shadow-dark: #191b1e;
 
-    --color-easy: #00b8a3;
-    --color-easy-bg: rgba(0, 184, 163, 0.18);
-    --color-medium: #ffc01e;
-    --color-medium-bg: rgba(255, 192, 30, 0.18);
-    --color-hard: #ff375f;
-    --color-hard-bg: rgba(255, 55, 95, 0.18);
+    --color-easy: #10b981;
+    --color-easy-ring: #00b8a3;
+    --color-easy-bg: rgba(16, 185, 129, 0.18);
+    --color-medium: #fbbf24;
+    --color-medium-ring: #ffc01e;
+    --color-medium-bg: rgba(251, 191, 36, 0.18);
+    --color-hard: #f43f5e;
+    --color-hard-ring: #ff375f;
+    --color-hard-bg: rgba(244, 63, 94, 0.18);
 
     --track-color: #16181b;
 
@@ -144,8 +150,7 @@ body::-webkit-scrollbar {
   background-color: var(--bg);
   border-radius: 18px;
   box-shadow: var(--nm-small);
-  position: sticky;
-  top: 8px;
+  position: relative;
   z-index: 20;
 }
 
@@ -260,8 +265,7 @@ body::-webkit-scrollbar {
    Segmented Navigation Tabs (Debossed Dynamic Track)
    ======================================================== */
 .tabs-nav {
-  position: sticky;
-  top: 66px;
+  position: relative;
   z-index: 19;
   display: flex;
   background-color: var(--bg);
@@ -390,17 +394,17 @@ body::-webkit-scrollbar {
 }
 
 .ring-easy {
-  stroke: var(--color-easy);
+  stroke: var(--color-easy-ring);
   filter: drop-shadow(0 0 2px rgba(0, 184, 163, 0.45));
 }
 
 .ring-medium {
-  stroke: var(--color-medium);
+  stroke: var(--color-medium-ring);
   filter: drop-shadow(0 0 2px rgba(255, 192, 30, 0.45));
 }
 
 .ring-hard {
-  stroke: var(--color-hard);
+  stroke: var(--color-hard-ring);
   filter: drop-shadow(0 0 2px rgba(255, 55, 95, 0.45));
 }
 
@@ -485,17 +489,17 @@ body::-webkit-scrollbar {
 }
 
 .dot-easy {
-  background-color: var(--color-easy);
+  background-color: var(--color-easy-ring);
   box-shadow: 0 0 5px rgba(0, 184, 163, 0.4);
 }
 
 .dot-medium {
-  background-color: var(--color-medium);
+  background-color: var(--color-medium-ring);
   box-shadow: 0 0 5px rgba(255, 192, 30, 0.4);
 }
 
 .dot-hard {
-  background-color: var(--color-hard);
+  background-color: var(--color-hard-ring);
   box-shadow: 0 0 5px rgba(255, 55, 95, 0.4);
 }
 
@@ -557,7 +561,8 @@ body::-webkit-scrollbar {
 .metric-divider {
   width: 1px;
   height: 20px;
-  background: rgba(163, 177, 198, 0.35);
+  background: var(--shadow-dark);
+  box-shadow: 1px 0 0 var(--shadow-light);
 }
 
 /* Action Controls */
@@ -578,7 +583,7 @@ body::-webkit-scrollbar {
   font-size: 11px;
   font-weight: 600;
   color: var(--accent-red);
-  padding: 11px 14px;
+  padding: 9px 14px;
 }
 
 /* ========================================================
@@ -1100,9 +1105,9 @@ body::-webkit-scrollbar {
    ======================================================== */
 .hanging-scrollbar-track {
   position: fixed;
-  right: 2px;
-  top: 104px;
-  bottom: 12px;
+  right: 3px;
+  top: 14px;
+  bottom: 14px;
   width: 20px;
   z-index: 100;
   cursor: pointer;

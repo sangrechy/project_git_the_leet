@@ -53,9 +53,6 @@
   const legendMediumCount = document.getElementById('legend-medium-count');
   const legendHardCount = document.getElementById('legend-hard-count');
 
-  // DOM Elements - Home Quick Banner
-  const btnGotoRecent = document.getElementById('btn-goto-recent');
-  const homeRecentPreview = document.getElementById('home-recent-preview');
 
   // DOM Elements - Recent Tab
   const recentList = document.getElementById('recent-list');
@@ -125,11 +122,6 @@
     });
   });
 
-  if (btnGotoRecent) {
-    btnGotoRecent.addEventListener('click', () => {
-      activateTab('recent');
-    });
-  }
 
   // ==========================================
   // Last Synced Timestamp Formatting & Display
@@ -355,15 +347,6 @@
     // 2. LeetCode circular chart
     renderDonutChart(difficultyCounts);
 
-    // 3. Home quick preview description
-    if (homeRecentPreview) {
-      if (latestItem && latestItem.length > 0) {
-        const top = latestItem[0];
-        homeRecentPreview.textContent = `Latest: #${top.frontendId || top.problemId} ${top.problemTitle || 'Solution'}`;
-      } else {
-        homeRecentPreview.textContent = `${counts.synced} solutions backed up`;
-      }
-    }
 
     // 4. Update last sync time
     await updateLastSyncUI();
