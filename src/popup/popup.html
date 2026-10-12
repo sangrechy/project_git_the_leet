@@ -38,31 +38,34 @@
     <button class="tab-btn" data-tab="settings">Settings</button>
   </nav>
 
-  <!-- TAB 1: Home (Integrated precision dashboard card) -->
-  <main id="pane-home" class="tab-pane active">
-    <div class="dashboard-card">
-      <!-- Top: LeetCode Circular Donut Gauge -->
-      <div class="gauge-section">
-        <div class="gauge-visual">
-          <svg class="donut-svg" viewBox="0 0 140 140" width="132" height="132">
-            <circle class="donut-track" cx="70" cy="70" r="52"></circle>
-            <circle id="donut-easy" class="donut-ring ring-easy" cx="70" cy="70" r="52"></circle>
-            <circle id="donut-medium" class="donut-ring ring-medium" cx="70" cy="70" r="52"></circle>
-            <circle id="donut-hard" class="donut-ring ring-hard" cx="70" cy="70" r="52"></circle>
-          </svg>
-          <div class="gauge-center">
-            <div class="wheel-hamster-wrap" title="Jane running in the LeetCode wheel!">
-              <picture>
-                <source srcset="../../res/chibi_jane/walking.webp" type="image/webp">
-                <img id="jane-hamster" src="../../res/chibi_jane/walking.gif" alt="Hamster Jane" class="jane-hamster-runner">
-              </picture>
+  <!-- Content Viewport Container (Fixed App Chassis) -->
+  <div class="tab-viewport-wrap">
+    <div class="tab-viewport" id="tab-viewport">
+      <!-- TAB 1: Home (Integrated precision dashboard card) -->
+      <main id="pane-home" class="tab-pane active">
+        <div class="dashboard-card">
+          <!-- Top: LeetCode Circular Donut Gauge -->
+          <div class="gauge-section">
+            <div class="gauge-visual">
+              <svg class="donut-svg" viewBox="0 0 144 144" width="134" height="134">
+                <circle class="donut-track" cx="72" cy="72" r="58"></circle>
+                <circle id="donut-easy" class="donut-ring ring-easy" cx="72" cy="72" r="58"></circle>
+                <circle id="donut-medium" class="donut-ring ring-medium" cx="72" cy="72" r="58"></circle>
+                <circle id="donut-hard" class="donut-ring ring-hard" cx="72" cy="72" r="58"></circle>
+              </svg>
+              <div class="gauge-center">
+                <div class="wheel-hamster-wrap" title="Jane running in the LeetCode wheel!">
+                  <picture>
+                    <source srcset="../../res/chibi_jane/walking.webp" type="image/webp">
+                    <img id="jane-hamster" src="../../res/chibi_jane/walking.gif" alt="Hamster Jane" class="jane-hamster-runner">
+                  </picture>
+                </div>
+                <div class="gauge-stats-bottom">
+                  <span id="chart-total-count" class="gauge-value">0</span>
+                  <span class="gauge-label">Problems Solved</span>
+                </div>
+              </div>
             </div>
-            <div class="gauge-stats-bottom">
-              <span id="chart-total-count" class="gauge-value">0</span>
-              <span class="gauge-label">Solved</span>
-            </div>
-          </div>
-        </div>
 
         <div class="gauge-legend">
           <div class="legend-row">
@@ -256,14 +259,16 @@
       </div>
     </form>
   </section>
+  </div>
 
-  <!-- Right-Side Hanging Jane (Custom Viewport Scrollbar Indicator) -->
+  <!-- Right-Side Hanging Jane (Scoped Strictly to Content Viewport Div) -->
   <div class="hanging-scrollbar-track" id="hanging-track" title="Drag or click to scroll">
     <div class="hanging-rope"></div>
     <div class="hanging-jane-carriage" id="clinging-carriage">
       <img id="jane-clinging" src="../../res/chibi_jane/clinging/1.png" alt="Hanging Jane Scrollbar">
     </div>
   </div>
+</div>
 
   <!-- Scripts -->
   <script src="../contest-guard.js"></script>

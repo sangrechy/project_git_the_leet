@@ -85,8 +85,8 @@
   const btnTestConnection = document.getElementById('btn-test-connection');
   const settingsAlert = document.getElementById('settings-alert');
 
-  // Circumference for r=52 SVG circle (2 * PI * 52)
-  const CIRCUMFERENCE = 2 * Math.PI * 52; // ~326.726
+  // Circumference for r=58 SVG circle (2 * PI * 58)
+  const CIRCUMFERENCE = 2 * Math.PI * 58; // ~364.425
 
   // ==========================================
   // Tab Switching
@@ -101,8 +101,8 @@
     if (tabBtn) tabBtn.classList.add('active');
     if (pane) pane.classList.add('active');
 
-    window.scrollTo(0, 0);
-    document.body.scrollTop = 0;
+    const viewport = document.getElementById('tab-viewport');
+    if (viewport) viewport.scrollTop = 0;
 
     if (tabName === 'home') {
       refreshHomeView();
@@ -722,10 +722,11 @@
   // ==========================================
   class HangingJaneScrollbar {
     constructor() {
+      this.viewport = document.getElementById('tab-viewport');
       this.track = document.getElementById('hanging-track');
       this.carriage = document.getElementById('clinging-carriage');
       this.img = document.getElementById('jane-clinging');
-      if (!this.track || !this.carriage || !this.img) return;
+      if (!this.viewport || !this.track || !this.carriage || !this.img) return;
 
       this.currentFrame = 1;
       this.frameCount = 4;
@@ -764,13 +765,8 @@
       const carriageHeight = this.carriage.offsetHeight || 40;
       const maxTravel = Math.max(1, trackRect.height - carriageHeight);
 
-      const docHeight = document.documentElement.scrollHeight || 0;
-      const bodyHeight = document.body.scrollHeight || 0;
-      const scrollHeight = Math.max(docHeight, bodyHeight);
-
-      const docClient = document.documentElement.clientHeight || 0;
-      const bodyClient = document.body.clientHeight || window.innerHeight || 0;
-      const clientHeight = Math.max(docClient, bodyClient);
+      const scrollHeight = this.viewport.scrollHeight || 0;
+      const clientHeight = this.viewport.clientHeight || 0;
 
       const rawMaxScroll = scrollHeight - clientHeight;
       const needsScroll = rawMaxScroll > 6;
@@ -785,13 +781,11 @@
     }
 
     _getScrollTop() {
-      return document.body.scrollTop || window.scrollY || document.documentElement.scrollTop || 0;
+      return this.viewport.scrollTop || 0;
     }
 
     _setScrollTop(val) {
-      document.body.scrollTop = val;
-      document.documentElement.scrollTop = val;
-      window.scrollTo(0, val);
+      this.viewport.scrollTop = val;
     }
 
     _updateCarriagePosition() {
@@ -819,9 +813,7 @@
 
     _initScrollTracking() {
       const onScroll = () => this._updateCarriagePosition();
-      window.addEventListener('scroll', onScroll, { passive: true });
-      document.body.addEventListener('scroll', onScroll, { passive: true });
-      document.addEventListener('scroll', onScroll, { passive: true });
+      this.viewport.addEventListener('scroll', onScroll, { passive: true });
       window.addEventListener('resize', onScroll);
 
       // Pointer drag on carriage

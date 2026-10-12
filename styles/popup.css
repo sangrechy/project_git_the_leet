@@ -97,10 +97,6 @@
     --body-inset-bevel: inset 2px 2px 4px rgba(255, 255, 255, 0.04), inset -2px -2px 5px rgba(0, 0, 0, 0.5);
   }
 
-  .gauge-visual {
-    background: #1d2024 !important;
-    box-shadow: inset 4px 4px 8px #131518, inset -4px -4px 8px #292d33 !important;
-  }
 }
 
 * {
@@ -117,18 +113,20 @@ html {
 
 body {
   width: 360px;
-  min-height: 420px;
-  max-height: 510px;
+  height: 440px;
+  min-height: 440px;
+  max-height: 440px;
   background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-family);
   font-size: 12.5px;
   line-height: 1.45;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   user-select: none;
   transition: background-color 0.3s ease, color 0.3s ease;
   box-shadow: var(--body-inset-bevel);
+  display: flex;
+  flex-direction: column;
 }
 
 /* Hide default native scrollbars to let Hanging Jane be the tactile scroll indicator */
@@ -328,6 +326,32 @@ body::-webkit-scrollbar {
 }
 
 /* ========================================================
+   Content Viewport Container (Fixed App Chassis)
+   ======================================================== */
+.tab-viewport-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-viewport {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Hide default native scrollbars to let Hanging Jane be the tactile scroll indicator */
+.tab-viewport::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+  background: transparent;
+}
+
+/* ========================================================
    Tab Panes
    ======================================================== */
 .tab-pane {
@@ -362,11 +386,11 @@ body::-webkit-scrollbar {
 
 .gauge-visual {
   position: relative;
-  width: 118px;
-  height: 118px;
+  width: 134px;
+  height: 134px;
   border-radius: 50%;
-  background: var(--bg);
-  box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+  background: #181a1e !important;
+  box-shadow: inset 4px 4px 8px #0e1013, inset -4px -4px 8px #272a32 !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -376,19 +400,19 @@ body::-webkit-scrollbar {
 
 .donut-svg {
   transform: rotate(-90deg);
-  width: 110px;
-  height: 110px;
+  width: 134px;
+  height: 134px;
 }
 
 .donut-track {
   fill: none;
-  stroke: var(--track-color);
-  stroke-width: 10px;
+  stroke: #22262e;
+  stroke-width: 9px;
 }
 
 .donut-ring {
   fill: none;
-  stroke-width: 10px;
+  stroke-width: 9px;
   stroke-linecap: round;
   transition: stroke-dasharray 0.6s cubic-bezier(0.16, 1, 0.3, 1), stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -420,24 +444,24 @@ body::-webkit-scrollbar {
 
 /* Hamster Jane walking on top */
 .wheel-hamster-wrap {
-  width: 44px;
-  height: 44px;
+  width: 50px;
+  height: 50px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 2px;
+  margin-top: 4px;
   transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .gauge-visual:hover .wheel-hamster-wrap {
-  transform: scale(1.12);
+  transform: scale(1.1);
 }
 
 .jane-hamster-runner {
-  width: 44px;
-  height: 44px;
+  width: 50px;
+  height: 50px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.2));
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45));
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -445,26 +469,28 @@ body::-webkit-scrollbar {
 /* Problem count and label placed directly below Jane */
 .gauge-stats-bottom {
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 3px;
-  margin-top: -3px;
-  margin-bottom: 3px;
+  margin-top: 0px;
+  line-height: 1.1;
 }
 
 .gauge-value {
   font-size: 16px;
   font-weight: 700;
-  color: var(--text-dark);
-  line-height: 1;
+  color: #f8fafc;
+  line-height: 1.1;
 }
 
 .gauge-label {
-  font-size: 8.5px;
+  font-size: 8px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin-top: 1px;
+  white-space: nowrap;
 }
 
 .gauge-legend {
@@ -1104,10 +1130,10 @@ body::-webkit-scrollbar {
    Hanging Jane Scrollbar System (Right Track)
    ======================================================== */
 .hanging-scrollbar-track {
-  position: fixed;
+  position: absolute;
   right: 3px;
-  top: 14px;
-  bottom: 14px;
+  top: 4px;
+  bottom: 8px;
   width: 20px;
   z-index: 100;
   cursor: pointer;
