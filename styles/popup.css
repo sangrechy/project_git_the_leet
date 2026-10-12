@@ -45,7 +45,7 @@
   /* Neumorphic shadow tokens */
   --nm-flat: 7px 7px 14px var(--shadow-dark), -7px -7px 14px var(--shadow-light);
   --nm-flat-sm: 4px 4px 9px var(--shadow-dark), -4px -4px 9px var(--shadow-light);
-  --nm-convex: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  --nm-convex: 5px 5px 11px var(--shadow-dark), -5px -5px 11px var(--shadow-light);
   --nm-pressed: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
   --nm-pressed-sm: inset 2px 2px 5px var(--shadow-dark), inset -2px -2px 5px var(--shadow-light);
 
@@ -92,7 +92,7 @@
 
     --nm-flat: 7px 7px 14px var(--shadow-dark), -7px -7px 14px var(--shadow-light);
     --nm-flat-sm: 4px 4px 9px var(--shadow-dark), -4px -4px 9px var(--shadow-light);
-    --nm-convex: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+    --nm-convex: 5px 5px 11px var(--shadow-dark), -5px -5px 11px var(--shadow-light);
     --nm-pressed: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
     --nm-pressed-sm: inset 2px 2px 5px var(--shadow-dark), inset -2px -2px 5px var(--shadow-light);
   }
@@ -107,7 +107,7 @@
 }
 
 body {
-  width: 390px;
+  width: 400px;
   min-height: 520px;
   max-height: 600px;
   background-color: var(--bg);
@@ -157,10 +157,11 @@ body {
   gap: 12px;
 }
 
+/* Prominently Enlarged Mascot Icon */
 .brand-icon-wrap {
-  width: 46px;
-  height: 46px;
-  border-radius: 14px;
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
   background: var(--bg);
   box-shadow: var(--nm-convex);
   display: flex;
@@ -176,9 +177,10 @@ body {
 }
 
 .brand-icon {
-  width: 36px;
-  height: 36px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
 }
 
 .brand-info {
@@ -187,7 +189,7 @@ body {
 }
 
 .brand-title {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--text-dark);
   letter-spacing: -0.02em;
@@ -200,10 +202,13 @@ body {
   color: var(--text-muted);
 }
 
-/* Pause Sync Switch Button */
-.pause-control {
+/* Active Status & Last Synced Timestamp */
+.header-sync-status {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
 }
 
 .btn-toggle-pause {
@@ -212,7 +217,7 @@ body {
   box-shadow: var(--nm-flat-sm);
   font-size: 11px;
   font-weight: 600;
-  padding: 6px 12px;
+  padding: 5px 11px;
   border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
@@ -243,8 +248,17 @@ body {
   background-color: var(--accent-amber);
 }
 
+.last-sync-time {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+  letter-spacing: -0.01em;
+  padding-right: 2px;
+}
+
 /* ========================================================
-   Tabs Navigation (Recessed Segmented Track)
+   Tabs Navigation (Recessed Segmented Track - 4 Tabs)
    ======================================================== */
 .tabs-nav {
   display: flex;
@@ -262,13 +276,13 @@ body {
   color: var(--text);
   font-size: 12px;
   font-weight: 600;
-  padding: 7px 4px;
+  padding: 7px 2px;
   border-radius: 10px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 5px;
   transition: all 0.2s ease;
 }
 
@@ -438,8 +452,8 @@ body {
 
 .chart-visual {
   position: relative;
-  width: 124px;
-  height: 124px;
+  width: 126px;
+  height: 126px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -544,33 +558,87 @@ body {
   font-size: 13px;
 }
 
-/* ========================================================
-   HOME TAB - Element 4: Recently Synced (Last 10)
-   ======================================================== */
-.recent-card {
+/* Home Quick Recent Banner */
+.home-recent-banner {
   background: var(--bg);
   box-shadow: var(--nm-flat-sm);
-  border-radius: var(--radius-lg);
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.recent-header {
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 2px 2px 2px;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.recent-title {
-  font-size: 13px;
+.home-recent-banner:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--nm-convex);
+}
+
+.banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.banner-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.banner-desc {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.banner-arrow {
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 700;
+  transition: transform 0.15s ease;
+}
+
+.home-recent-banner:hover .banner-arrow {
+  transform: translateX(2px);
+}
+
+/* ========================================================
+   RECENT TAB (Dedicated Screen)
+   ======================================================== */
+.recent-page-card {
+  background: var(--bg);
+  box-shadow: var(--nm-flat-sm);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recent-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 2px;
+}
+
+.recent-page-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recent-page-title {
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--text-dark);
 }
 
-.recent-count-tag {
+.recent-page-tag {
   font-size: 10px;
   font-weight: 600;
   padding: 2px 7px;
@@ -580,13 +648,35 @@ body {
   color: var(--text-muted);
 }
 
-.recent-list {
+.recent-filter-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.filter-chip {
+  background: var(--bg);
+  box-shadow: var(--nm-flat-sm);
+  border-radius: 8px;
+  padding: 3px 8px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-chip.active {
+  box-shadow: var(--nm-pressed-sm);
+  color: var(--accent);
+}
+
+.recent-list-scroll {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  max-height: 230px;
+  gap: 8px;
+  max-height: 380px;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 3px;
 }
 
 .recent-item {
@@ -621,7 +711,7 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 235px;
+  max-width: 245px;
 }
 
 .diff-badge {
@@ -674,7 +764,7 @@ body {
 
 .empty-state {
   text-align: center;
-  padding: 22px 12px;
+  padding: 28px 12px;
   color: var(--text-muted);
   font-size: 12px;
 }

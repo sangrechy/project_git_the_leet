@@ -18,11 +18,12 @@
         <div class="brand-sub">GitHub Sync</div>
       </div>
     </div>
-    <div class="pause-control">
+    <div class="header-sync-status">
       <button id="btn-toggle-sync" class="btn-toggle-pause" title="Pause or resume automatic syncing">
         <span id="sync-indicator" class="sync-dot"></span>
         <span id="sync-status-text">Active</span>
       </button>
+      <div id="last-sync-time" class="last-sync-time">(last sync: never)</div>
     </div>
   </header>
 
@@ -30,6 +31,9 @@
   <nav class="tabs-nav">
     <button class="tab-btn active" data-tab="home">
       Home
+    </button>
+    <button class="tab-btn" data-tab="recent">
+      Recent
       <span id="tab-queue-badge" class="tab-badge" style="display: none;">0</span>
     </button>
     <button class="tab-btn" data-tab="backfill">
@@ -40,7 +44,7 @@
     </button>
   </nav>
 
-  <!-- TAB 1: Home (Stats, Sync Now, Donut Chart, Recently Synced Last 10) -->
+  <!-- TAB 1: Home (Stats Strip, Sync Now, Donut Chart, Quick Recent Link) -->
   <main id="pane-home" class="tab-pane active">
     <!-- 1. Stats Strip -->
     <div class="stats-strip">
@@ -71,7 +75,7 @@
     <!-- 3. LeetCode Circular Pie/Donut Chart -->
     <div class="chart-card">
       <div class="chart-visual">
-        <svg class="donut-svg" viewBox="0 0 140 140" width="124" height="124">
+        <svg class="donut-svg" viewBox="0 0 140 140" width="126" height="126">
           <circle class="donut-track" cx="70" cy="70" r="52"></circle>
           <circle id="donut-easy" class="donut-ring ring-easy" cx="70" cy="70" r="52"></circle>
           <circle id="donut-medium" class="donut-ring ring-medium" cx="70" cy="70" r="52"></circle>
@@ -101,22 +105,41 @@
       </div>
     </div>
 
-    <!-- 4. Recently Synced Submissions (Last 10) -->
-    <div class="recent-card">
-      <div class="recent-header">
-        <span class="recent-title">Recently Synced</span>
-        <span class="recent-count-tag">Last 10</span>
+    <!-- Home Quick Link to Recent Tab -->
+    <div class="home-recent-banner" id="btn-goto-recent" title="Open full list of synced submissions">
+      <div class="banner-content">
+        <span class="banner-title">Recently Synced Submissions</span>
+        <span class="banner-desc" id="home-recent-preview">View solution history & details</span>
       </div>
-      <div id="recent-list" class="recent-list">
+      <span class="banner-arrow">→</span>
+    </div>
+  </main>
+
+  <!-- TAB 2: Recent Submissions (Dedicated Screen) -->
+  <section id="pane-recent" class="tab-pane">
+    <div class="recent-page-card">
+      <div class="recent-page-header">
+        <div class="recent-page-title-wrap">
+          <span class="recent-page-title">Recently Synced</span>
+          <span class="recent-page-tag" id="recent-count-tag">Last 10</span>
+        </div>
+        <div class="recent-filter-chips">
+          <button class="filter-chip active" data-filter="all">All</button>
+          <button class="filter-chip" data-filter="easy">Easy</button>
+          <button class="filter-chip" data-filter="medium">Med</button>
+          <button class="filter-chip" data-filter="hard">Hard</button>
+        </div>
+      </div>
+      <div id="recent-list" class="recent-list-scroll">
         <div class="empty-state">
           <div class="empty-text">No synced submissions yet.</div>
           <div class="empty-sub">Solve practice problems on LeetCode to auto-backup.</div>
         </div>
       </div>
     </div>
-  </main>
+  </section>
 
-  <!-- TAB 2: Historical Backfill -->
+  <!-- TAB 3: Historical Backfill -->
   <section id="pane-backfill" class="tab-pane">
     <div class="backfill-card">
       <div class="section-heading">Historical Backfill</div>
@@ -171,7 +194,7 @@
     </div>
   </section>
 
-  <!-- TAB 3: Settings -->
+  <!-- TAB 4: Settings -->
   <section id="pane-settings" class="tab-pane">
     <div id="settings-alert" class="alert" style="display: none;"></div>
 

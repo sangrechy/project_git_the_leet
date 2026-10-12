@@ -2,11 +2,12 @@
  * Popup Controller for "git the leet"
  *
  * Implements:
- * - 4-item Home View: Stats Strip, Sync Now, LeetCode Donut Chart, Recently Synced (last 10)
- * - Automatic GitHub Remote State Hydration (resolves extension reinstall/reset state loss)
- * - Soft Neumorphic UI interactions
- * - Historical Backfill Workflow
- * - Settings Management & Connectivity Diagnostics
+ * - 4-tab Navigation: Home, Recent, Backfill, Settings
+ * - Live Last Sync Timestamp under Active status in Header
+ * - LeetCode Donut Chart & Progress Stats
+ * - Dedicated Recent Tab with Difficulty Filtering & Click-to-Open
+ * - Resilient Background Messaging with Cold-Start Recovery
+ * - Automatic GitHub Remote State Hydration
  */
 
 (function () {
@@ -21,29 +22,28 @@
   let isBackfillRunning = false;
   let backfillPaused = false;
   let scannedSubmissionsToBackfill = [];
+  let currentRecentFilter = 'all';
 
   // DOM Elements - Navigation
   const tabs = document.querySelectorAll('.tab-btn');
   const panes = document.querySelectorAll('.tab-pane');
   const queueBadge = document.getElementById('tab-queue-badge');
 
-  // DOM Elements - Sync Status
+  // DOM Elements - Header Sync Status & Timestamp
   const btnToggleSync = document.getElementById('btn-toggle-sync');
   const syncIndicator = document.getElementById('sync-indicator');
   const syncStatusText = document.getElementById('sync-status-text');
+  const lastSyncTimeEl = document.getElementById('last-sync-time');
 
-  // DOM Elements - Home (4 core parts)
-  // 1. Stats Strip
+  // DOM Elements - Home
   const statSynced = document.getElementById('stat-synced-count');
   const statPending = document.getElementById('stat-pending-count');
   const statFailed = document.getElementById('stat-failed-count');
-
-  // 2. Sync Now
   const btnSyncNow = document.getElementById('btn-sync-now');
   const btnSyncText = document.getElementById('btn-sync-text');
   const btnRetryAll = document.getElementById('btn-retry-all');
 
-  // 3. LeetCode Donut Chart
+  // DOM Elements - Donut Chart
   const donutEasy = document.getElementById('donut-easy');
   const donutMedium = document.getElementById('donut-medium');
   const donutHard = document.getElementById('donut-hard');
@@ -52,8 +52,14 @@
   const legendMediumCount = document.getElementById('legend-medium-count');
   const legendHardCount = document.getElementById('legend-hard-count');
 
-  // 4. Recently Synced
+  // DOM Elements - Home Quick Banner
+  const btnGotoRecent = document.getElementById('btn-goto-recent');
+  const homeRecentPreview = document.getElementById('home-recent-preview');
+
+  // DOM Elements - Recent Tab
   const recentList = document.getElementById('recent-list');
+  const recentCountTag = document.getElementById('recent-count-tag');
+  const filterChips = document.querySelectorAll('.filter-chip');
 
   // DOM Elements - Backfill
   const btnScanBackfill = document.getElementById('btn-scan-backfill');
@@ -87,22 +93,81 @@
   // ==========================================
   // Tab Switching
   // ==========================================
+  function activateTab(tabName) {
+    tabs.forEach(t => t.classList.remove('active'));
+    panes.forEach(p => p.classList.remove('active'));
+
+    const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabName}"]`);
+    const pane = document.getElementById(`pane-${tabName}`);
+
+    if (tabBtn) tabBtn.classList.add('active');
+    if (pane) pane.classList.add('active');
+
+    if (tabName === 'home') {
+      refreshHomeView();
+    } else if (tabName === 'recent') {
+      refreshRecentView();
+    }
+  }
+
   tabs.forEach(btn => {
     btn.addEventListener('click', () => {
       const targetTab = btn.getAttribute('data-tab');
-
-      tabs.forEach(t => t.classList.remove('active'));
-      panes.forEach(p => p.classList.remove('active'));
-
-      btn.classList.add('active');
-      const targetPane = document.getElementById(`pane-${targetTab}`);
-      if (targetPane) targetPane.classList.add('active');
-
-      if (targetTab === 'home') {
-        refreshHomeView();
-      }
+      activateTab(targetTab);
     });
   });
+
+  if (btnGotoRecent) {
+    btnGotoRecent.addEventListener('click', () => {
+      activateTab('recent');
+    });
+  }
+
+  // ==========================================
+  // Last Synced Timestamp Formatting & Display
+  // ==========================================
+  function formatLastSyncTime(ts) {
+    if (!ts) return '(last sync: never)';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '(last sync: never)';
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = monthNames[d.getMonth()];
+    const day = d.getDate();
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+
+    return `(last sync: ${month} ${day}, ${hours}:${minutes} ${ampm})`;
+  }
+
+  async function updateLastSyncUI() {
+    if (!lastSyncTimeEl) return;
+    try {
+      const data = await chrome.storage.local.get('leetcode_backup_last_sync');
+      let ts = data?.leetcode_backup_last_sync;
+
+      if (!ts) {
+        // Fallback: examine last synced item from queue
+        const lastSynced = await localQueue.getLastSynced(1);
+        if (lastSynced && lastSynced.length > 0) {
+          ts = lastSynced[0].syncedAt || (lastSynced[0].timestamp ? lastSynced[0].timestamp * 1000 : null);
+        }
+      }
+
+      lastSyncTimeEl.textContent = formatLastSyncTime(ts);
+    } catch (e) {
+      lastSyncTimeEl.textContent = '(last sync: never)';
+    }
+  }
+
+  async function setLastSyncTimestamp(ts = Date.now()) {
+    try {
+      await chrome.storage.local.set({ leetcode_backup_last_sync: ts });
+    } catch (e) {}
+    await updateLastSyncUI();
+  }
 
   // ==========================================
   // Sync Pause / Active Toggle
@@ -118,6 +183,7 @@
       syncStatusText.textContent = 'Active';
       btnToggleSync.title = 'Syncing active. Click to pause.';
     }
+    await updateLastSyncUI();
   }
 
   btnToggleSync.addEventListener('click', async () => {
@@ -155,29 +221,44 @@
     const medLen = (medium / total) * CIRCUMFERENCE;
     const hardLen = (hard / total) * CIRCUMFERENCE;
 
-    // Easy segment starts at 0
     donutEasy.style.strokeDasharray = `${easyLen} ${CIRCUMFERENCE - easyLen}`;
     donutEasy.style.strokeDashoffset = '0';
 
-    // Medium segment starts right after Easy
     donutMedium.style.strokeDasharray = `${medLen} ${CIRCUMFERENCE - medLen}`;
     donutMedium.style.strokeDashoffset = `-${easyLen}`;
 
-    // Hard segment starts right after Medium
     donutHard.style.strokeDasharray = `${hardLen} ${CIRCUMFERENCE - hardLen}`;
     donutHard.style.strokeDashoffset = `-${easyLen + medLen}`;
   }
 
   // ==========================================
-  // Recently Synced (Last 10) Renderer
+  // Recent Tab: Filter Chips & Renderer
   // ==========================================
-  async function renderRecentlySynced() {
-    const last10 = await localQueue.getLastSynced(10);
+  filterChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      filterChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      currentRecentFilter = chip.getAttribute('data-filter') || 'all';
+      refreshRecentView();
+    });
+  });
 
-    if (!last10 || last10.length === 0) {
+  async function refreshRecentView() {
+    const allSynced = await localQueue.getLastSynced(30);
+
+    let filtered = allSynced;
+    if (currentRecentFilter !== 'all') {
+      filtered = allSynced.filter(item => (item.difficulty || '').toLowerCase() === currentRecentFilter);
+    }
+
+    if (recentCountTag) {
+      recentCountTag.textContent = `${filtered.length} ${currentRecentFilter === 'all' ? 'items' : currentRecentFilter}`;
+    }
+
+    if (!filtered || filtered.length === 0) {
       recentList.innerHTML = `
         <div class="empty-state">
-          <div class="empty-text">No synced submissions yet.</div>
+          <div class="empty-text">No ${currentRecentFilter === 'all' ? '' : currentRecentFilter + ' '}synced submissions found.</div>
           <div class="empty-sub">Solve practice problems on LeetCode to auto-backup.</div>
         </div>
       `;
@@ -185,7 +266,7 @@
     }
 
     recentList.innerHTML = '';
-    for (const item of last10) {
+    for (const item of filtered) {
       const el = document.createElement('div');
       el.className = 'recent-item';
 
@@ -232,9 +313,10 @@
   // Home View Refresh
   // ==========================================
   async function refreshHomeView() {
-    const [counts, difficultyCounts] = await Promise.all([
+    const [counts, difficultyCounts, latestItem] = await Promise.all([
       localQueue.getCounts(),
-      localQueue.getDifficultyCounts()
+      localQueue.getDifficultyCounts(),
+      localQueue.getLastSynced(1)
     ]);
 
     // 1. Stats strip
@@ -255,13 +337,26 @@
     // Toggle "Retry Failed" visibility
     btnRetryAll.style.display = counts.failed > 0 ? 'inline-flex' : 'none';
 
-    // 3. LeetCode circular chart
+    // 2. LeetCode circular chart
     renderDonutChart(difficultyCounts);
 
-    // 4. Recently synced (last 10)
-    await renderRecentlySynced();
+    // 3. Home quick preview description
+    if (homeRecentPreview) {
+      if (latestItem && latestItem.length > 0) {
+        const top = latestItem[0];
+        homeRecentPreview.textContent = `Latest: #${top.frontendId || top.problemId} ${top.problemTitle || 'Solution'}`;
+      } else {
+        homeRecentPreview.textContent = `${counts.synced} solutions backed up`;
+      }
+    }
+
+    // 4. Update last sync time
+    await updateLastSyncUI();
   }
 
+  // ==========================================
+  // Resilient Background Messaging
+  // ==========================================
   function sendBackgroundMessage(message, retries = 2) {
     return new Promise((resolve, reject) => {
       const send = (attemptsLeft) => {
@@ -300,31 +395,28 @@
       const settings = await settingsManager.getSettings();
       if (!settings.githubToken || !settings.repoOwner || !settings.repoName) {
         // Guide user to settings tab
-        tabs.forEach(t => t.classList.remove('active'));
-        panes.forEach(p => p.classList.remove('active'));
-        const settingsTab = document.querySelector('[data-tab="settings"]');
-        const settingsPane = document.getElementById('pane-settings');
-        if (settingsTab) settingsTab.classList.add('active');
-        if (settingsPane) settingsPane.classList.add('active');
+        activateTab('settings');
         showSettingsAlert('error', 'Please configure your GitHub token and repository first.');
         return;
       }
 
-      // First hydrate from GitHub remote state (fetches any existing repo files)
+      // First hydrate from GitHub remote state
       try {
         await sendBackgroundMessage({ type: 'SYNC_GITHUB_STATE' });
       } catch (e) {
         console.warn('[LeetCode-Backup] Sync state message warning:', e);
       }
 
-      // Then process any pending items
+      // Then process any pending queue items
       try {
         await sendBackgroundMessage({ type: 'PROCESS_QUEUE' });
       } catch (e) {
         console.warn('[LeetCode-Backup] Process queue warning:', e);
       }
 
+      await setLastSyncTimestamp(Date.now());
       await refreshHomeView();
+      await refreshRecentView();
     } finally {
       btnSyncNow.disabled = false;
       btnSyncText.textContent = 'Sync Now';
@@ -357,7 +449,7 @@
       let hasMore = true;
       let allFound = [];
       let pages = 0;
-      const MAX_PAGES = 10; // Scan up to 200 submissions in preview scan
+      const MAX_PAGES = 10;
 
       while (hasMore && pages < MAX_PAGES) {
         const res = await submissionReader.fetchSubmissionHistory(offset, limit);
@@ -372,7 +464,6 @@
         if (!hasMore) break;
       }
 
-      // Deduplicate found submissions by ID
       const uniqueFoundMap = new Map();
       allFound.forEach(s => {
         if (s.id && !uniqueFoundMap.has(String(s.id))) {
@@ -381,7 +472,6 @@
       });
       const uniqueFound = Array.from(uniqueFoundMap.values());
 
-      // Query synced IDs and queue
       const syncedIds = await localQueue.getSyncedIds();
       const existingQueue = await localQueue.getQueue();
       const existingQueueIds = new Set(existingQueue.map(q => String(q.submissionId)));
@@ -393,7 +483,6 @@
 
       scannedSubmissionsToBackfill = unbacked;
 
-      // Update UI
       scanSummaryWrap.style.display = 'block';
       backfillFoundCount.textContent = uniqueFound.length;
       backfillSyncedCount.textContent = uniqueFound.length - unbacked.length;
@@ -424,12 +513,7 @@
     const settings = await settingsManager.getSettings();
     const validation = settingsManager.validate(settings);
     if (!validation.valid) {
-      tabs.forEach(t => t.classList.remove('active'));
-      panes.forEach(p => p.classList.remove('active'));
-      const settingsTab = document.querySelector('[data-tab="settings"]');
-      const settingsPane = document.getElementById('pane-settings');
-      if (settingsTab) settingsTab.classList.add('active');
-      if (settingsPane) settingsPane.classList.add('active');
+      activateTab('settings');
       showSettingsAlert('error', `Cannot start backfill: ${validation.errors.join(' ')}`);
       return;
     }
@@ -510,7 +594,9 @@
       btnStartBackfill.textContent = 'Resume Backfill';
     }
 
+    await setLastSyncTimestamp(Date.now());
     refreshHomeView();
+    refreshRecentView();
   });
 
   btnPauseBackfill.addEventListener('click', () => {
@@ -636,6 +722,7 @@
     await Promise.all([
       updateSyncStatusUI(),
       refreshHomeView(),
+      refreshRecentView(),
       loadSettingsIntoForm()
     ]);
 
@@ -645,7 +732,9 @@
       try {
         const res = await sendBackgroundMessage({ type: 'SYNC_GITHUB_STATE' });
         if (res && res.success) {
+          await setLastSyncTimestamp(Date.now());
           refreshHomeView();
+          refreshRecentView();
         }
       } catch (e) {}
     }
@@ -657,9 +746,13 @@
       if (area === 'local') {
         if (changes['leetcode_backup_queue']) {
           refreshHomeView();
+          refreshRecentView();
         }
         if (changes['leetcode_backup_settings']) {
           updateSyncStatusUI();
+        }
+        if (changes['leetcode_backup_last_sync']) {
+          updateLastSyncUI();
         }
       }
     });
