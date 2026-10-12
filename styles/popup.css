@@ -96,35 +96,33 @@
   outline: none;
 }
 
+html {
+  background-color: transparent;
+  border-radius: 20px;
+}
+
 body {
-  width: 400px;
-  min-height: 520px;
-  max-height: 600px;
+  width: 360px;
+  min-height: 420px;
+  max-height: 510px;
   background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-family);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.45;
+  border-radius: 20px;
   overflow-x: hidden;
   overflow-y: auto;
   user-select: none;
   transition: background-color 0.3s ease, color 0.3s ease;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
 }
 
-/* Custom Soft Scrollbar */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-track {
-  background: var(--bg);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--shadow-dark);
-  border-radius: var(--radius-full);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+/* Hide default native scrollbars to let Hanging Jane be the tactile scroll indicator */
+body::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+  background: transparent;
 }
 
 /* ========================================================
@@ -134,11 +132,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 18px 10px 18px;
+  padding: 10px 14px 8px 14px;
   background-color: var(--bg);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
 }
 
 .brand {
@@ -149,11 +147,11 @@ body {
 
 /* Prominently Enlarged Mascot Icon */
 .brand-icon-wrap {
-  width: 60px;
-  height: 60px;
-  border-radius: 18px;
+  width: 66px;
+  height: 66px;
+  border-radius: 20px;
   background: var(--bg);
-  box-shadow: var(--nm-flat);
+  box-shadow: var(--nm-convex);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -167,10 +165,10 @@ body {
 }
 
 .brand-icon {
-  width: 50px;
-  height: 50px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.12));
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.16));
 }
 
 .brand-info {
@@ -179,7 +177,7 @@ body {
 }
 
 .brand-title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--text-dark);
   letter-spacing: -0.02em;
@@ -187,7 +185,7 @@ body {
 }
 
 .brand-sub {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
   color: var(--text-muted);
   margin-top: 1px;
@@ -199,21 +197,21 @@ body {
   flex-direction: column;
   align-items: flex-end;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
 }
 
 .btn-toggle-pause {
   background: var(--bg);
   color: var(--text-dark);
   box-shadow: var(--nm-small);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: var(--radius-md);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   transition: all 0.15s ease;
 }
 
@@ -240,7 +238,7 @@ body {
 }
 
 .last-sync-time {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 500;
   color: var(--text-muted);
   white-space: nowrap;
@@ -249,42 +247,49 @@ body {
 }
 
 /* ========================================================
-   Segmented Navigation Tabs (Debossed Track)
+   Segmented Navigation Tabs (Debossed Dynamic Track)
    ======================================================== */
 .tabs-nav {
   display: flex;
   background-color: var(--bg);
   box-shadow: var(--nm-pressed);
   border-radius: 14px;
-  margin: 4px 18px 14px 18px;
+  margin: 2px 14px 10px 14px;
   padding: 4px;
   gap: 4px;
+  align-items: center;
 }
 
+/* Dynamic size alteration: tab buttons adjust organically */
 .tab-btn {
-  flex: 1;
+  flex: 1 1 auto;
   background: transparent;
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 7px 2px;
+  padding: 6px 7px;
   border-radius: 10px;
   cursor: pointer;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  gap: 4px;
+  white-space: nowrap;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .tab-btn:hover {
   color: var(--text-dark);
 }
 
+/* Active tab dynamically expands smoothly */
 .tab-btn.active {
+  flex: 1.35 1 auto;
   background: var(--bg);
   color: var(--accent);
   box-shadow: var(--nm-small);
+  font-weight: 700;
+  padding: 6px 12px;
 }
 
 .tab-badge {
@@ -310,7 +315,7 @@ body {
    ======================================================== */
 .tab-pane {
   display: none;
-  padding: 0 18px 18px 18px;
+  padding: 0 16px 12px 12px;
 }
 
 .tab-pane.active {
@@ -324,10 +329,10 @@ body {
   background: var(--bg);
   border-radius: var(--radius-card);
   box-shadow: var(--nm-flat);
-  padding: 20px 18px 16px 18px;
+  padding: 14px 14px 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 /* Gauge Visual Section */
@@ -335,13 +340,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  gap: 12px;
+  gap: 10px;
 }
 
 .gauge-visual {
   position: relative;
-  width: 132px;
-  height: 132px;
+  width: 114px;
+  height: 114px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -350,6 +355,8 @@ body {
 
 .donut-svg {
   transform: rotate(-90deg);
+  width: 114px;
+  height: 114px;
 }
 
 .donut-track {
@@ -384,14 +391,14 @@ body {
 }
 
 .gauge-value {
-  font-size: 24px;
+  font-size: 21px;
   font-weight: 700;
   color: var(--text-dark);
   line-height: 1.1;
 }
 
 .gauge-label {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -401,37 +408,37 @@ body {
 .gauge-legend {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 110px;
+  gap: 6px;
+  min-width: 95px;
 }
 
 .legend-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 12px;
+  gap: 7px;
+  font-size: 11.5px;
 }
 
 .legend-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .dot-easy {
   background-color: var(--color-easy);
-  box-shadow: 0 0 6px rgba(0, 184, 163, 0.4);
+  box-shadow: 0 0 5px rgba(0, 184, 163, 0.4);
 }
 
 .dot-medium {
   background-color: var(--color-medium);
-  box-shadow: 0 0 6px rgba(255, 192, 30, 0.4);
+  box-shadow: 0 0 5px rgba(255, 192, 30, 0.4);
 }
 
 .dot-hard {
   background-color: var(--color-hard);
-  box-shadow: 0 0 6px rgba(255, 55, 95, 0.4);
+  box-shadow: 0 0 5px rgba(255, 55, 95, 0.4);
 }
 
 .legend-name {
@@ -443,7 +450,7 @@ body {
 .legend-val {
   color: var(--text-dark);
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 /* Integrated Debossed Metrics Track */
@@ -452,8 +459,8 @@ body {
   align-items: center;
   background: var(--bg);
   box-shadow: var(--nm-pressed);
-  border-radius: 16px;
-  padding: 10px 4px;
+  border-radius: 14px;
+  padding: 8px 4px;
 }
 
 .metric-segment {
@@ -462,11 +469,11 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 1px;
 }
 
 .metric-num {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.15;
 }
@@ -484,42 +491,46 @@ body {
 }
 
 .metric-lbl {
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-weight: 500;
   color: var(--text-muted);
 }
 
 .metric-divider {
   width: 1px;
-  height: 24px;
+  height: 20px;
   background: rgba(163, 177, 198, 0.35);
 }
 
 /* Action Controls */
 .action-row {
   display: flex;
-  gap: 10px;
+  gap: 8px;
 }
 
 .btn-sync-action {
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--accent);
-  padding: 11px 16px;
+  padding: 9px 14px;
 }
 
 .btn-retry-action {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--accent-red);
   padding: 11px 14px;
 }
 
 /* ========================================================
-   RECENT TAB: Dedicated Problem Feed
+   RECENT TAB: Dedicated Problem Feed & Cohesive Card
    ======================================================== */
-.recent-container {
+.recent-panel {
+  background: var(--bg);
+  border-radius: var(--radius-card);
+  box-shadow: var(--nm-flat);
+  padding: 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -529,16 +540,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px;
+  padding: 0 2px;
 }
 
 .recent-tag {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-muted);
   background: var(--bg);
   box-shadow: var(--nm-pressed);
-  padding: 2px 9px;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
 }
 
@@ -552,35 +563,40 @@ body {
   box-shadow: var(--nm-small);
   border-radius: 8px;
   padding: 3px 8px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
+.filter-chip:hover {
+  color: var(--text-dark);
+}
+
 .filter-chip.active {
   box-shadow: var(--nm-pressed) !important;
   color: var(--accent);
+  font-weight: 700;
 }
 
 .recent-feed {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 380px;
+  gap: 7px;
+  max-height: 280px;
   overflow-y: auto;
-  padding-right: 3px;
+  padding: 2px 2px;
 }
 
 .recent-item {
   background: var(--bg);
-  border-radius: 14px;
-  padding: 10px 14px;
+  border-radius: 12px;
+  padding: 8px 11px;
   box-shadow: var(--nm-small);
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
@@ -603,53 +619,53 @@ body {
 }
 
 .recent-item-title {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-dark);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 250px;
+  max-width: 210px;
 }
 
+/* Debossed Difficulty Badges seated properly into soft UI */
 .diff-badge {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  padding: 1px 6px;
+  padding: 2px 7px;
   border-radius: 6px;
-  line-height: 1.3;
+  background: var(--bg);
+  box-shadow: var(--nm-pressed);
+  line-height: 1.25;
   flex-shrink: 0;
 }
 
 .diff-easy {
   color: var(--color-easy);
-  background: var(--color-easy-bg);
 }
 
 .diff-medium {
   color: var(--color-medium);
-  background: var(--color-medium-bg);
 }
 
 .diff-hard {
   color: var(--color-hard);
-  background: var(--color-hard-bg);
 }
 
 .recent-item-bottom {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
+  gap: 6px;
+  font-size: 10px;
   color: var(--text-muted);
 }
 
 .lang-pill {
-  padding: 1px 5px;
+  padding: 1px 6px;
   border-radius: 4px;
   background: var(--bg);
   box-shadow: var(--nm-pressed);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
   color: var(--accent);
   text-transform: uppercase;
@@ -658,13 +674,14 @@ body {
 
 .recent-time {
   margin-left: auto;
+  font-size: 9.5px;
 }
 
 .empty-state {
   text-align: center;
-  padding: 30px 12px;
+  padding: 24px 10px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .empty-text {
@@ -673,7 +690,7 @@ body {
 }
 
 .empty-sub {
-  font-size: 11px;
+  font-size: 10.5px;
   margin-top: 3px;
   color: var(--text-muted);
 }
@@ -686,63 +703,85 @@ body {
   background: var(--bg);
   border-radius: var(--radius-card);
   box-shadow: var(--nm-flat);
-  padding: 20px 18px;
+  padding: 14px 14px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 11px;
 }
 
 .panel-header {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .panel-title {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 700;
   color: var(--text-dark);
 }
 
 .panel-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
 .backfill-results-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .backfill-stat-box {
   background: var(--bg);
   box-shadow: var(--nm-pressed);
-  border-radius: var(--radius-md);
-  padding: 8px;
+  border-radius: 12px;
+  padding: 8px 6px;
   text-align: center;
 }
 
-.backfill-stat-val {
-  font-size: 16px;
-  font-weight: 700;
+.backfill-stat-box.stat-found .backfill-stat-val {
   color: var(--text-dark);
 }
 
+.backfill-stat-box.stat-synced .backfill-stat-val {
+  color: var(--accent-green);
+}
+
+.backfill-stat-box.stat-synced .backfill-stat-lbl {
+  color: var(--accent-green);
+  opacity: 0.85;
+}
+
+.backfill-stat-box.stat-needed .backfill-stat-val {
+  color: var(--accent);
+}
+
+.backfill-stat-box.stat-needed .backfill-stat-lbl {
+  color: var(--accent);
+  opacity: 0.85;
+}
+
+.backfill-stat-val {
+  font-size: 15px;
+  font-weight: 700;
+}
+
 .backfill-stat-lbl {
-  font-size: 10px;
-  font-weight: 500;
+  font-size: 9.5px;
+  font-weight: 600;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 1px;
+  letter-spacing: 0.02em;
 }
 
 .progress-container {
-  margin-top: 6px;
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
 }
 
 .progress-bar-bg {
@@ -758,6 +797,7 @@ body {
   width: 0%;
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  box-shadow: 0 0 6px var(--accent-glow);
   border-radius: var(--radius-full);
   transition: width 0.3s ease;
 }
@@ -765,19 +805,20 @@ body {
 .progress-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 10.5px;
+  font-weight: 500;
   color: var(--text-muted);
 }
 
 .notice-box {
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: 10.5px;
+  color: var(--text);
   background: var(--bg);
   box-shadow: var(--nm-pressed);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
+  border-radius: 12px;
+  padding: 8px 11px;
   line-height: 1.4;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 /* Form Groups & Inputs */
@@ -996,4 +1037,68 @@ body {
 .alert-error {
   color: var(--accent-red);
   background: rgba(239, 68, 68, 0.12);
+}
+
+/* ========================================================
+   Hanging Jane Scrollbar System (Right Track)
+   ======================================================== */
+.hanging-scrollbar-track {
+  position: fixed;
+  right: 3px;
+  top: 68px;
+  bottom: 12px;
+  width: 22px;
+  z-index: 100;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  touch-action: none;
+}
+
+.hanging-rope {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    var(--accent) 0%,
+    var(--shadow-dark) 100%
+  );
+  border-radius: 2px;
+  box-shadow: 0 0 2px var(--accent-glow);
+}
+
+.hanging-jane-carriage {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 0;
+  width: 20px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: top 0.08s ease-out;
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  z-index: 101;
+}
+
+.hanging-jane-carriage.is-dragging {
+  transition: none !important;
+  cursor: grabbing !important;
+}
+
+#jane-clinging {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.28));
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
 }

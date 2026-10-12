@@ -107,7 +107,7 @@
 
   <!-- TAB 2: Recent (Dedicated feed of synced problems) -->
   <section id="pane-recent" class="tab-pane">
-    <div class="recent-container">
+    <div class="recent-panel">
       <div class="recent-controls-bar">
         <div class="recent-tag" id="recent-count-tag">0 items</div>
         <div class="recent-filter-pills">
@@ -144,15 +144,15 @@
       <!-- Scan Results Display -->
       <div id="backfill-scan-summary" style="display: none;">
         <div class="backfill-results-grid">
-          <div class="backfill-stat-box">
+          <div class="backfill-stat-box stat-found">
             <div id="backfill-found-count" class="backfill-stat-val">0</div>
             <div class="backfill-stat-lbl">Found</div>
           </div>
-          <div class="backfill-stat-box">
+          <div class="backfill-stat-box stat-synced">
             <div id="backfill-synced-count" class="backfill-stat-val">0</div>
             <div class="backfill-stat-lbl">Backed Up</div>
           </div>
-          <div class="backfill-stat-box">
+          <div class="backfill-stat-box stat-needed">
             <div id="backfill-needed-count" class="backfill-stat-val">0</div>
             <div class="backfill-stat-lbl">To Backup</div>
           </div>
@@ -248,6 +248,14 @@
       </div>
     </form>
   </section>
+
+  <!-- Right-Side Hanging Jane (Custom Viewport Scrollbar Indicator) -->
+  <div class="hanging-scrollbar-track" id="hanging-track" title="Drag or click to scroll">
+    <div class="hanging-rope"></div>
+    <div class="hanging-jane-carriage" id="clinging-carriage">
+      <img id="jane-clinging" src="../../res/chibi_jane/clinging/1.png" alt="Hanging Jane Scrollbar">
+    </div>
+  </div>
 
   <!-- Scripts -->
   <script src="../contest-guard.js"></script>

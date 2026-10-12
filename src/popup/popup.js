@@ -23,6 +23,7 @@
   let backfillPaused = false;
   let scannedSubmissionsToBackfill = [];
   let currentRecentFilter = 'all';
+  let hangingScrollbar = null;
 
   // DOM Elements - Navigation
   const tabs = document.querySelectorAll('.tab-btn');
@@ -103,10 +104,17 @@
     if (tabBtn) tabBtn.classList.add('active');
     if (pane) pane.classList.add('active');
 
+    window.scrollTo(0, 0);
+    document.body.scrollTop = 0;
+
     if (tabName === 'home') {
       refreshHomeView();
     } else if (tabName === 'recent') {
       refreshRecentView();
+    }
+
+    if (hangingScrollbar) {
+      setTimeout(() => hangingScrollbar.update(), 50);
     }
   }
 
@@ -307,6 +315,10 @@
 
       recentList.appendChild(el);
     }
+
+    if (hangingScrollbar) {
+      setTimeout(() => hangingScrollbar.update(), 50);
+    }
   }
 
   // ==========================================
@@ -487,6 +499,10 @@
       backfillFoundCount.textContent = uniqueFound.length;
       backfillSyncedCount.textContent = uniqueFound.length - unbacked.length;
       backfillNeededCount.textContent = unbacked.length;
+
+      if (hangingScrollbar) {
+        setTimeout(() => hangingScrollbar.update(), 50);
+      }
 
       if (unbacked.length > 0) {
         btnStartBackfill.style.display = 'block';
@@ -716,9 +732,135 @@
   }
 
   // ==========================================
+  // Hanging Jane Custom Scrollbar Controller
+  // ==========================================
+  class HangingJaneScrollbar {
+    constructor() {
+      this.track = document.getElementById('hanging-track');
+      this.carriage = document.getElementById('clinging-carriage');
+      this.img = document.getElementById('jane-clinging');
+      if (!this.track || !this.carriage || !this.img) return;
+
+      this.currentFrame = 1;
+      this.frameCount = 4;
+      this.frameDelay = 200;
+      this.frameBaseUrl = '../../res/chibi_jane/clinging/';
+      this.cache = [];
+      this.animInterval = null;
+      this.isDragging = false;
+      this.dragGrabOffsetY = 0;
+
+      this._preloadFrames();
+      this._startAnimation();
+      this._initScrollTracking();
+    }
+
+    _preloadFrames() {
+      for (let i = 1; i <= this.frameCount; i++) {
+        const image = new Image();
+        image.src = `${this.frameBaseUrl}${i}.png`;
+        this.cache.push(image);
+      }
+    }
+
+    _startAnimation() {
+      if (this.animInterval) clearInterval(this.animInterval);
+      this.animInterval = setInterval(() => {
+        this.currentFrame = (this.currentFrame % this.frameCount) + 1;
+        if (this.cache[this.currentFrame - 1]) {
+          this.img.src = this.cache[this.currentFrame - 1].src;
+        }
+      }, this.frameDelay);
+    }
+
+    _getScrollMetrics() {
+      const trackRect = this.track.getBoundingClientRect();
+      const carriageHeight = this.carriage.offsetHeight || 40;
+      const maxTravel = Math.max(1, trackRect.height - carriageHeight);
+      const scrollHeight = document.documentElement.scrollHeight || document.body.scrollHeight;
+      const clientHeight = document.documentElement.clientHeight || document.body.clientHeight;
+      const maxScroll = Math.max(1, scrollHeight - clientHeight);
+      return { trackRect, carriageHeight, maxTravel, maxScroll };
+    }
+
+    _updateCarriagePosition() {
+      if (this.isDragging) return;
+      const metrics = this._getScrollMetrics();
+      const currentScroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop;
+      const ratio = metrics.maxScroll > 0 ? Math.min(1, Math.max(0, currentScroll / metrics.maxScroll)) : 0;
+      const topPos = ratio * metrics.maxTravel;
+      this.carriage.style.top = `${topPos}px`;
+    }
+
+    _setScrollFromThumb(thumbTop, metrics) {
+      const clampedTop = Math.max(0, Math.min(metrics.maxTravel, thumbTop));
+      this.carriage.style.top = `${clampedTop}px`;
+      const scrollRatio = clampedTop / metrics.maxTravel;
+      const targetScroll = scrollRatio * metrics.maxScroll;
+      window.scrollTo(0, targetScroll);
+      document.documentElement.scrollTop = targetScroll;
+      document.body.scrollTop = targetScroll;
+    }
+
+    _initScrollTracking() {
+      const onScroll = () => this._updateCarriagePosition();
+      window.addEventListener('scroll', onScroll, { passive: true });
+      document.body.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll);
+
+      // Pointer drag on carriage
+      this.carriage.addEventListener('pointerdown', (e) => {
+        this.isDragging = true;
+        this.carriage.setPointerCapture(e.pointerId);
+        this.carriage.classList.add('is-dragging');
+        const carriageRect = this.carriage.getBoundingClientRect();
+        this.dragGrabOffsetY = e.clientY - carriageRect.top;
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      this.carriage.addEventListener('pointermove', (e) => {
+        if (!this.isDragging) return;
+        const metrics = this._getScrollMetrics();
+        const thumbTop = e.clientY - metrics.trackRect.top - this.dragGrabOffsetY;
+        this._setScrollFromThumb(thumbTop, metrics);
+      });
+
+      const endDrag = (e) => {
+        if (this.isDragging) {
+          this.isDragging = false;
+          try { this.carriage.releasePointerCapture(e.pointerId); } catch (_) {}
+          this.carriage.classList.remove('is-dragging');
+          document.body.style.userSelect = '';
+        }
+      };
+
+      this.carriage.addEventListener('pointerup', endDrag);
+      this.carriage.addEventListener('pointercancel', endDrag);
+
+      // Click track outside carriage
+      this.track.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('#clinging-carriage')) return;
+        const metrics = this._getScrollMetrics();
+        const targetTop = e.clientY - metrics.trackRect.top - (metrics.carriageHeight / 2);
+        this._setScrollFromThumb(targetTop, metrics);
+      });
+
+      setTimeout(() => this._updateCarriagePosition(), 80);
+    }
+
+    update() {
+      this._updateCarriagePosition();
+    }
+  }
+
+  // ==========================================
   // Initial Page Load & Auto-Hydration
   // ==========================================
   async function init() {
+    hangingScrollbar = new HangingJaneScrollbar();
+
     await Promise.all([
       updateSyncStatusUI(),
       refreshHomeView(),
