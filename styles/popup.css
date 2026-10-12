@@ -41,16 +41,18 @@
   --track-color: rgba(163, 177, 198, 0.4);
 
   /* Strict Neumorphic Shadow Presets from Spec */
-  --nm-flat: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light);
+  --nm-flat: 6px 6px 14px var(--shadow-dark), -6px -6px 14px var(--shadow-light);
   --nm-pressed: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
   --nm-small: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
   --nm-convex: 5px 5px 11px var(--shadow-dark), -5px -5px 11px var(--shadow-light);
+  --card-inner-highlight: inset 1px 1px 1.5px rgba(255, 255, 255, 0.4);
+  --body-inset-bevel: inset 2px 2px 4px var(--shadow-light), inset -2px -2px 4px var(--shadow-dark);
 
   --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --radius-sm: 8px;
   --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-card: 24px;
+  --radius-lg: 18px;
+  --radius-card: 20px;
   --radius-full: 9999px;
 }
 
@@ -81,10 +83,12 @@
 
     --track-color: #16181b;
 
-    --nm-flat: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light);
+    --nm-flat: 6px 6px 14px var(--shadow-dark), -6px -6px 14px var(--shadow-light);
     --nm-pressed: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
     --nm-small: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
     --nm-convex: 5px 5px 11px var(--shadow-dark), -5px -5px 11px var(--shadow-light);
+    --card-inner-highlight: inset 1px 1px 1.5px rgba(255, 255, 255, 0.04);
+    --body-inset-bevel: inset 2px 2px 4px rgba(255, 255, 255, 0.04), inset -2px -2px 5px rgba(0, 0, 0, 0.5);
   }
 
   .gauge-visual {
@@ -102,8 +106,7 @@
 }
 
 html {
-  background-color: transparent;
-  border-radius: 20px;
+  background-color: var(--bg);
 }
 
 body {
@@ -115,12 +118,11 @@ body {
   font-family: var(--font-family);
   font-size: 12.5px;
   line-height: 1.45;
-  border-radius: 20px;
   overflow-x: hidden;
   overflow-y: auto;
   user-select: none;
   transition: background-color 0.3s ease, color 0.3s ease;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--body-inset-bevel);
 }
 
 /* Hide default native scrollbars to let Hanging Jane be the tactile scroll indicator */
@@ -137,10 +139,13 @@ body::-webkit-scrollbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px 8px 14px;
+  padding: 8px 12px;
+  margin: 8px 12px 6px 12px;
   background-color: var(--bg);
+  border-radius: 18px;
+  box-shadow: var(--nm-small);
   position: sticky;
-  top: 0;
+  top: 8px;
   z-index: 20;
 }
 
@@ -256,13 +261,13 @@ body::-webkit-scrollbar {
    ======================================================== */
 .tabs-nav {
   position: sticky;
-  top: 50px;
+  top: 66px;
   z-index: 19;
   display: flex;
   background-color: var(--bg);
   box-shadow: var(--nm-pressed);
-  border-radius: 14px;
-  margin: 2px 14px 10px 14px;
+  border-radius: 16px;
+  margin: 4px 12px 10px 12px;
   padding: 4px;
   gap: 4px;
   align-items: center;
@@ -323,7 +328,7 @@ body::-webkit-scrollbar {
    ======================================================== */
 .tab-pane {
   display: none;
-  padding: 0 16px 12px 12px;
+  padding: 4px 12px 14px 12px;
 }
 
 .tab-pane.active {
@@ -336,7 +341,7 @@ body::-webkit-scrollbar {
 .dashboard-card {
   background: var(--bg);
   border-radius: var(--radius-card);
-  box-shadow: var(--nm-flat);
+  box-shadow: var(--nm-flat), var(--card-inner-highlight);
   padding: 14px 14px 12px 14px;
   display: flex;
   flex-direction: column;
@@ -582,7 +587,7 @@ body::-webkit-scrollbar {
 .recent-panel {
   background: var(--bg);
   border-radius: var(--radius-card);
-  box-shadow: var(--nm-flat);
+  box-shadow: var(--nm-flat), var(--card-inner-highlight);
   padding: 14px 12px;
   display: flex;
   flex-direction: column;
@@ -753,7 +758,7 @@ body::-webkit-scrollbar {
 .settings-panel {
   background: var(--bg);
   border-radius: var(--radius-card);
-  box-shadow: var(--nm-flat);
+  box-shadow: var(--nm-flat), var(--card-inner-highlight);
   padding: 14px 14px;
   display: flex;
   flex-direction: column;
@@ -1095,10 +1100,10 @@ body::-webkit-scrollbar {
    ======================================================== */
 .hanging-scrollbar-track {
   position: fixed;
-  right: 3px;
-  top: 96px;
+  right: 2px;
+  top: 104px;
   bottom: 12px;
-  width: 22px;
+  width: 20px;
   z-index: 100;
   cursor: pointer;
   display: none; /* Managed dynamically by HangingJaneScrollbar; only shown when scrolling is needed */
