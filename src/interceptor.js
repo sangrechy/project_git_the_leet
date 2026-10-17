@@ -15,11 +15,34 @@
   function isCurrentRouteContest() {
     const curPath = (window.location.pathname || '').toLowerCase();
     const curHref = (window.location.href || '').toLowerCase();
-    return curPath === '/contest' || curPath.startsWith('/contest/') || curHref.includes('/contest');
+    return (
+      curPath === '/contest' ||
+      curPath === '/contests' ||
+      curPath.startsWith('/contest/') ||
+      curPath.startsWith('/contests/') ||
+      /(?:^|\/)(?:contest|contests)(?:\/|$)/i.test(curPath) ||
+      /(?:^|\/)(?:contest|contests)(?:\/|$)/i.test(curHref)
+    );
+  }
+
+  function isContestRequest(url) {
+    if (isCurrentRouteContest()) return true;
+    if (typeof url === 'string') {
+      const low = url.toLowerCase();
+      if (
+        low.includes('/contest/') ||
+        low.includes('/contests/') ||
+        /(?:^|\/)(?:contest|contests)(?:\/|$)/i.test(low)
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   // Strict contest exclusion: completely inactive on any contest page
   if (isCurrentRouteContest()) {
+    console.log('[git the leet] Contest route detected. Interceptor deactivated.');
     return;
   }
 
@@ -54,9 +77,8 @@
   window.fetch = async function (...args) {
     const response = await originalFetch.apply(this, args);
     try {
-      if (isCurrentRouteContest()) return response;
-
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+      if (isContestRequest(url)) return response;
 
       // 1. Intercept /problems/<slug>/submit/ endpoint (returns submission_id)
       if (url.includes('/submit/') || url.endsWith('/submit')) {
@@ -134,9 +156,8 @@
   XMLHttpRequest.prototype.send = function (...args) {
     this.addEventListener('load', function () {
       try {
-        if (isCurrentRouteContest()) return;
-
         const url = this._lc_url || '';
+        if (isContestRequest(url)) return;
 
         // Check submit endpoint
         if (url.includes('/submit/') || url.endsWith('/submit')) {

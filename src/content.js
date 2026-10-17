@@ -15,7 +15,15 @@
 
   // Strict contest exclusion: if URL is any contest route, immediately exit
   const curPath = (window.location.pathname || '').toLowerCase();
-  if (curPath === '/contest' || curPath.startsWith('/contest/') || (window.location.href || '').toLowerCase().includes('/contest')) {
+  const curHref = (window.location.href || '').toLowerCase();
+  if (
+    curPath === '/contest' ||
+    curPath === '/contests' ||
+    curPath.startsWith('/contest/') ||
+    curPath.startsWith('/contests/') ||
+    /(?:^|\/)(?:contest|contests)(?:\/|$)/i.test(curPath) ||
+    /(?:^|\/)(?:contest|contests)(?:\/|$)/i.test(curHref)
+  ) {
     console.log('[git the leet] Contest route detected. Extension deactivated.');
     return;
   }
@@ -28,6 +36,11 @@
   if (!contestGuard || !SubmissionReaderClass || !LocalQueueClass || !GitHubUploaderClass) {
     console.error('[LeetCode-Backup] Required modules are missing. Content script halted.');
     return;
+  }
+
+  function isContestMode() {
+    if (!contestGuard) return false;
+    return contestGuard.isContestPage() || contestGuard.isContestUrl(window.location.href);
   }
 
   const submissionReader = new SubmissionReaderClass();
@@ -168,7 +181,14 @@
       }
     }
 
+    clear() {
+      if (this.wrapper) {
+        this.wrapper.innerHTML = '';
+      }
+    }
+
     show(type, title, message, duration = 4000) {
+      if (isContestMode()) return null;
       if (!this.wrapper && document.body) this._init();
       if (!this.wrapper) return null;
 
@@ -212,6 +232,10 @@
 
       return {
         update: (newType, newTitle, newMessage, newDuration = 4000) => {
+          if (isContestMode()) {
+            closeToast();
+            return;
+          }
           toast.className = `toast ${newType} visible`;
           let newIcon = '';
           if (newType === 'loading') newIcon = '<div class="spinner"></div>';
@@ -313,12 +337,25 @@
    * @param {string|number} [specificSubmissionId] - Optional known submission ID
    */
   async function handleAcceptedSubmission(slug, specificSubmissionId) {
+    if (isContestMode()) {
+      console.log('[git the leet] Contest page detected in handleAcceptedSubmission. Sync aborted.');
+      return;
+    }
     if (isProcessingSubmission) return;
     isProcessingSubmission = true;
 
     try {
+      if (isContestMode()) {
+        isProcessingSubmission = false;
+        return;
+      }
+
       const problemSlug = slug || contestGuard.extractProblemSlug(window.location.href);
-      console.log(`[LeetCode-Backup] Accepted result detected for problem "${problemSlug || 'unknown'}". Fetching details...`);
+      if (!problemSlug) {
+        console.warn('[LeetCode-Backup] Problem slug not available or contest page. Aborting.');
+        return;
+      }
+      console.log(`[LeetCode-Backup] Accepted result detected for problem "${problemSlug}". Fetching details...`);
 
       let submission = null;
       if (specificSubmissionId) {
@@ -332,14 +369,20 @@
         }
       }
 
+      if (isContestMode()) {
+        console.log('[git the leet] Contest route detected. Aborting submission handling.');
+        return;
+      }
+
       if (!submission) {
         // Allow brief moment for LeetCode backend to finalize
         await new Promise(r => setTimeout(r, 1200));
+        if (isContestMode()) return;
         submission = await submissionReader.getLatestAcceptedSubmission(problemSlug);
       }
 
-      if (!submission || !submission.submissionId) {
-        console.warn('[LeetCode-Backup] Could not obtain accepted submission details.');
+      if (!submission || !submission.submissionId || isContestMode()) {
+        console.warn('[LeetCode-Backup] Could not obtain accepted submission details or contest detected.');
         return;
       }
 
@@ -495,6 +538,7 @@
    * and triggers backup if verified.
    */
   async function checkAndProcessUrlSubmission(problemSlug, submissionId) {
+    if (isContestMode()) return;
     const strId = String(submissionId);
     if (processedSubmissionIds.has(strId)) return;
     if (strId === lastProcessedSubmissionId) return;
@@ -513,6 +557,10 @@
     let attempts = 0;
     const maxAttempts = 20; // 20 * 400ms = 8 seconds
     const interval = setInterval(async () => {
+      if (isContestMode()) {
+        clearInterval(interval);
+        return;
+      }
       attempts++;
 
       // Check DOM result
@@ -614,6 +662,11 @@
    * Does NOT disconnect existing observer if already observing the same problem slug.
    */
   function startSubmissionObserver(problemSlug) {
+    if (isContestMode()) {
+      stopSubmissionObserver();
+      return;
+    }
+
     if (activeObserver && activeObservedSlug === problemSlug) {
       return; // Already observing this problem slug
     }
@@ -634,6 +687,10 @@
     }
 
     activeObserver = new MutationObserver((mutations) => {
+      if (isContestMode()) {
+        stopSubmissionObserver();
+        return;
+      }
       if (isProcessingSubmission) return;
 
       for (const mutation of mutations) {
@@ -665,6 +722,7 @@
   // Listen for network interception messages from src/interceptor.js
   window.addEventListener('message', async (event) => {
     if (event.source !== window || !event.data) return;
+    if (isContestMode()) return;
 
     if (event.data.type === 'LEETCODE_SUBMISSION_STARTED' && event.data.submissionId) {
       const currentUrl = window.location.href;
@@ -691,6 +749,7 @@
 
   // Listen for keyboard submit shortcut (Ctrl+Enter or Cmd+Enter)
   window.addEventListener('keydown', (e) => {
+    if (isContestMode()) return;
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       const slug = contestGuard.extractProblemSlug(window.location.href);
       if (slug) {
@@ -702,6 +761,7 @@
 
   // Listen for mouse click on Submit button
   document.addEventListener('click', (e) => {
+    if (isContestMode()) return;
     const btn = e.target.closest('button, [role="button"]');
     if (!btn) return;
     const text = (btn.textContent || '').trim().toLowerCase();
@@ -724,6 +784,7 @@
    * Periodic polling after submit to catch submission completion via URL, DOM or REST API
    */
   function pollForResult(problemSlug, remainingTries) {
+    if (isContestMode()) return;
     if (remainingTries <= 0) return;
     if (isProcessingSubmission) {
       setTimeout(() => pollForResult(problemSlug, remainingTries - 1), 600);
@@ -731,10 +792,7 @@
     }
 
     setTimeout(async () => {
-      if (isProcessingSubmission) {
-        pollForResult(problemSlug, remainingTries - 1);
-        return;
-      }
+      if (isContestMode()) return;
 
       // 1. Check URL for submission ID
       const urlSubId = contestGuard.extractSubmissionId(window.location.href);
@@ -794,6 +852,19 @@
     }
 
     const currentUrl = window.location.href;
+    const isContest = isContestMode();
+
+    if (isContest) {
+      if (activeObserver) {
+        console.log(`[git the leet] Contest page detected (${currentUrl}). Stopping all observers.`);
+        stopSubmissionObserver();
+      }
+      isProcessingSubmission = false;
+      toasts.clear();
+      lastCheckedUrl = currentUrl;
+      return;
+    }
+
     if (currentUrl === lastCheckedUrl && activeObserver) {
       return;
     }
@@ -802,10 +873,9 @@
     const guardCheck = contestGuard.shouldSync(currentUrl);
 
     if (guardCheck.isContest) {
-      if (activeObserver) {
-        console.log(`[git the leet] Contest page detected (${currentUrl}). Stopping all observers.`);
-        stopSubmissionObserver();
-      }
+      stopSubmissionObserver();
+      isProcessingSubmission = false;
+      toasts.clear();
       return;
     }
 

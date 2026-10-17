@@ -41,8 +41,12 @@
       "exclude_matches": [
         "https://leetcode.com/contest/*",
         "https://leetcode.com/contest",
+        "https://leetcode.com/contests/*",
+        "https://leetcode.com/contests",
         "https://leetcode.cn/contest/*",
-        "https://leetcode.cn/contest"
+        "https://leetcode.cn/contest",
+        "https://leetcode.cn/contests/*",
+        "https://leetcode.cn/contests"
       ],
       "js": [
         "src/interceptor.js"
@@ -60,8 +64,12 @@
       "exclude_matches": [
         "https://leetcode.com/contest/*",
         "https://leetcode.com/contest",
+        "https://leetcode.com/contests/*",
+        "https://leetcode.com/contests",
         "https://leetcode.cn/contest/*",
-        "https://leetcode.cn/contest"
+        "https://leetcode.cn/contest",
+        "https://leetcode.cn/contests/*",
+        "https://leetcode.cn/contests"
       ],
       "js": [
         "src/contest-guard.js",
