@@ -764,6 +764,13 @@ body::-webkit-scrollbar {
   color: var(--color-hard);
 }
 
+.diff-not-accepted {
+  color: var(--accent-red, #ef4444);
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  font-weight: 700;
+}
+
 .recent-item-bottom {
   display: flex;
   align-items: center;

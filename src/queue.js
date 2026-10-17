@@ -110,6 +110,9 @@
         existing.metadataPath = itemData.metadataPath;
         existing.language = itemData.language;
         existing.extension = itemData.extension;
+        existing.accepted = itemData.accepted !== false && itemData.result !== 'Not Accepted';
+        existing.result = itemData.result || (existing.accepted ? 'Accepted' : 'Not Accepted');
+        existing.statusDisplay = itemData.statusDisplay || (existing.accepted ? 'Accepted' : 'Not Accepted');
         existing.status = 'pending';
         existing.lastError = null;
         existing.addedAt = Date.now();
@@ -137,6 +140,7 @@
         queue.splice(prevProblemIdx, 1);
       }
 
+      const isAccepted = itemData.accepted !== false && itemData.result !== 'Not Accepted';
       const newItem = {
         submissionId,
         problemId: String(itemData.frontendId || itemData.problemId),
@@ -150,6 +154,9 @@
         metadataJson: itemData.metadataJson,
         solutionPath: itemData.solutionPath,
         metadataPath: itemData.metadataPath,
+        accepted: isAccepted,
+        result: itemData.result || (isAccepted ? 'Accepted' : 'Not Accepted'),
+        statusDisplay: itemData.statusDisplay || itemData.metadata?.status_display || (isAccepted ? 'Accepted' : 'Not Accepted'),
         timestamp: itemData.timestamp || Math.floor(Date.now() / 1000),
         submittedAt: itemData.metadata?.submitted_at || new Date().toISOString(),
         runtime: itemData.metadata?.runtime || null,
@@ -304,7 +311,7 @@
      */
     async getDifficultyCounts() {
       const queue = await this.getQueue();
-      const synced = queue.filter(item => item.status === 'synced');
+      const synced = queue.filter(item => item.status === 'synced' && item.accepted !== false && item.result !== 'Not Accepted');
       const seenProblems = new Set();
       const counts = { easy: 0, medium: 0, hard: 0, total: 0 };
 
@@ -375,6 +382,9 @@
             memoryPercentile: rp.memoryPercentile || rp.memory_percentile || null,
             problemUrl: rp.problemUrl || rp.problem_url || null,
             status: 'synced',
+            accepted: rp.accepted !== false && rp.result !== 'Not Accepted',
+            result: rp.result || (rp.accepted !== false ? 'Accepted' : 'Not Accepted'),
+            statusDisplay: rp.statusDisplay || (rp.accepted !== false ? 'Accepted' : 'Not Accepted'),
             addedAt: (rp.timestamp ? rp.timestamp * 1000 : Date.now()),
             syncedAt: Date.now(),
             lastError: null,
@@ -385,6 +395,9 @@
         } else {
           existingItem.status = 'synced';
           if (rp.difficulty) existingItem.difficulty = rp.difficulty;
+          if (rp.accepted !== undefined) existingItem.accepted = rp.accepted;
+          if (rp.result) existingItem.result = rp.result;
+          if (rp.statusDisplay) existingItem.statusDisplay = rp.statusDisplay;
         }
       }
 

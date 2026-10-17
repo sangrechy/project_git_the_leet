@@ -329,13 +329,18 @@
       const diffClass = diff === 'easy' ? 'diff-easy' : diff === 'hard' ? 'diff-hard' : 'diff-medium';
       const lang = item.language || item.extension || 'code';
       const timeStr = item.timestamp ? formatRelativeTime(item.timestamp * 1000) : (item.addedAt ? formatRelativeTime(item.addedAt) : 'Synced');
+      const isAccepted = item.accepted !== false && item.result !== 'Not Accepted';
+      const statusBadge = !isAccepted ? '<span class="diff-badge diff-not-accepted">[Not Accepted]</span>' : '';
 
       el.innerHTML = `
         <div class="recent-item-top">
           <span class="recent-item-title" title="${escapeHtml(title)}">
             #${frontendId} ${escapeHtml(title)}
           </span>
-          <span class="diff-badge ${diffClass}">${diffLabel}</span>
+          <div style="display:flex;align-items:center;gap:4px;">
+            ${statusBadge}
+            <span class="diff-badge ${diffClass}">${diffLabel}</span>
+          </div>
         </div>
         <div class="recent-item-bottom">
           <span class="lang-pill">${escapeHtml(lang)}</span>
@@ -393,21 +398,30 @@
     // Toggle "Retry Failed" visibility
     btnRetryAll.style.display = counts.failed > 0 ? 'inline-flex' : 'none';
 
-    // 2. LeetCode circular chart
+    // 2. LeetCode circular chart: strictly refers from GraphQL for official solved problem counts
+    let chartCounts = null;
     try {
-      const stored = await chrome.storage.local.get('leetcode_total_questions');
-      if (stored && typeof stored.leetcode_total_questions === 'number' && stored.leetcode_total_questions > 0) {
-        difficultyCounts.totalAvailable = stored.leetcode_total_questions;
+      const stored = await chrome.storage.local.get(['leetcode_graphql_stats', 'leetcode_total_questions']);
+      if (stored?.leetcode_graphql_stats) {
+        chartCounts = stored.leetcode_graphql_stats;
+      }
+      if (stored?.leetcode_total_questions && chartCounts) {
+        chartCounts.totalAvailable = stored.leetcode_total_questions;
       }
     } catch (e) {}
-    renderDonutChart(difficultyCounts);
 
-    // Optional: asynchronously refresh total count from LeetCode if active
-    if (typeof submissionReader !== 'undefined' && submissionReader.fetchTotalQuestions) {
-      submissionReader.fetchTotalQuestions().then(total => {
-        if (total && total !== difficultyCounts.totalAvailable) {
-          difficultyCounts.totalAvailable = total;
-          renderDonutChart(difficultyCounts);
+    // Render cached GraphQL stats immediately if present; fallback to accepted items in queue
+    if (chartCounts) {
+      renderDonutChart(chartCounts);
+    } else {
+      renderDonutChart(difficultyCounts);
+    }
+
+    // Always fetch latest authoritative stats from LeetCode GraphQL
+    if (typeof submissionReader !== 'undefined' && submissionReader.fetchUserSolvedStats) {
+      submissionReader.fetchUserSolvedStats().then(freshStats => {
+        if (freshStats) {
+          renderDonutChart(freshStats);
         }
       }).catch(() => {});
     }

@@ -58,6 +58,19 @@
     } catch (e) {}
   }
 
+  function notifyNotAccepted(submissionId, statusMsg, source) {
+    if (!submissionId || isCurrentRouteContest()) return;
+    try {
+      window.postMessage({
+        type: 'LEETCODE_SUBMISSION_NOT_ACCEPTED',
+        submissionId: String(submissionId),
+        statusMsg: statusMsg || 'Not Accepted',
+        source: source || 'interceptor',
+        timestamp: Date.now()
+      }, '*');
+    } catch (e) {}
+  }
+
   function notifyStarted(submissionId, source) {
     if (!submissionId || isCurrentRouteContest()) return;
     try {
@@ -102,6 +115,8 @@
               ((data.state === 'SUCCESS' || data.run_success) && data.status_msg === 'Accepted');
             if (isAccepted) {
               notifyAccepted(submissionId, 'fetch_check');
+            } else if (data.state === 'SUCCESS' || (data.status_msg && data.status_msg !== 'Pending' && data.status_msg !== 'Started')) {
+              notifyNotAccepted(submissionId, data.status_msg || 'Not Accepted', 'fetch_check');
             }
           }
         }).catch(() => {});
@@ -129,8 +144,12 @@
               const status = details.statusDisplay || details.status_msg || details.statusCode;
               const isAccepted = status === 'Accepted' || status === 10 || details.statusCode === 10;
               const subId = details.id || details.submissionId || details.submission_id;
-              if (isAccepted && subId) {
-                notifyAccepted(subId, 'graphql_details');
+              if (subId) {
+                if (isAccepted) {
+                  notifyAccepted(subId, 'graphql_details');
+                } else if (status && status !== 'Pending' && status !== 'Started') {
+                  notifyNotAccepted(subId, details.statusDisplay || details.status_msg || 'Not Accepted', 'graphql_details');
+                }
               }
             }
           }).catch(() => {});
@@ -180,6 +199,8 @@
               ((data.state === 'SUCCESS' || data.run_success) && data.status_msg === 'Accepted');
             if (isAccepted) {
               notifyAccepted(submissionId, 'xhr_check');
+            } else if (data.state === 'SUCCESS' || (data.status_msg && data.status_msg !== 'Pending' && data.status_msg !== 'Started')) {
+              notifyNotAccepted(submissionId, data.status_msg || 'Not Accepted', 'xhr_check');
             }
           }
         }

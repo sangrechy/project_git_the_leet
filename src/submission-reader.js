@@ -212,6 +212,189 @@
     }
 
     /**
+     * Fetches official user problem statistics directly from LeetCode GraphQL.
+     * Accurately retrieves:
+     * - Easy solved count
+     * - Medium solved count
+     * - Hard solved count
+     * - Total solved count
+     * - Total available questions on LeetCode
+     *
+     * @returns {Promise<{ easy: number, medium: number, hard: number, total: number, totalAvailable: number, username: string }|null>}
+     */
+    async fetchUserSolvedStats() {
+      try {
+        // Step 1: Query globalData / userStatus to get current logged-in username
+        const userStatusQuery = `
+          query globalData {
+            userStatus {
+              isSignedIn
+              username
+            }
+          }
+        `;
+        let username = null;
+        try {
+          const statusData = await this._graphqlQuery(userStatusQuery, {}, 'globalData');
+          if (statusData?.userStatus?.isSignedIn && statusData?.userStatus?.username) {
+            username = statusData.userStatus.username;
+          }
+        } catch (e) {
+          // Non-critical, fallback to stored username
+        }
+
+        // Fallback: check stored username if available
+        if (!username && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+          const stored = await chrome.storage.local.get('leetcode_username');
+          if (stored?.leetcode_username) {
+            username = stored.leetcode_username;
+          }
+        }
+
+        // Step 2: Fetch question counts and user submitStats
+        if (username) {
+          const profileQuery = `
+            query getUserProfile($username: String!) {
+              allQuestionsCount {
+                difficulty
+                count
+              }
+              matchedUser(username: $username) {
+                username
+                submitStats: submitStatsGlobal {
+                  acSubmissionNum {
+                    difficulty
+                    count
+                    submissions
+                  }
+                }
+              }
+            }
+          `;
+
+          try {
+            const data = await this._graphqlQuery(profileQuery, { username }, 'getUserProfile');
+            const acList = data?.matchedUser?.submitStats?.acSubmissionNum;
+            const qList = data?.allQuestionsCount;
+
+            if (Array.isArray(acList)) {
+              let easy = 0, medium = 0, hard = 0, total = 0;
+              for (const item of acList) {
+                const diff = (item.difficulty || '').toLowerCase();
+                const count = Number(item.count) || 0;
+                if (diff === 'all') total = count;
+                else if (diff === 'easy') easy = count;
+                else if (diff === 'medium') medium = count;
+                else if (diff === 'hard') hard = count;
+              }
+
+              if (total === 0 && (easy + medium + hard) > 0) {
+                total = easy + medium + hard;
+              }
+
+              let totalAvailable = 3400;
+              if (Array.isArray(qList)) {
+                const allQ = qList.find(q => (q.difficulty || '').toLowerCase() === 'all');
+                if (allQ && allQ.count > 0) totalAvailable = allQ.count;
+              }
+
+              const result = {
+                easy,
+                medium,
+                hard,
+                total,
+                totalAvailable,
+                username,
+                timestamp: Date.now()
+              };
+
+              if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                await chrome.storage.local.set({
+                  leetcode_graphql_stats: result,
+                  leetcode_total_questions: totalAvailable,
+                  leetcode_username: username
+                });
+              }
+
+              return result;
+            }
+          } catch (profileErr) {
+            console.warn('[LeetCode-Backup] getUserProfile query failed, trying alternative:', profileErr.message);
+          }
+
+          // Fallback query: userProfileUserQuestionProgressV2
+          const progressV2Query = `
+            query userProfileUserQuestionProgressV2($userSlug: String!) {
+              allQuestionsCount {
+                difficulty
+                count
+              }
+              userProfileUserQuestionProgressV2(userSlug: $userSlug) {
+                numAcceptedQuestions {
+                  count
+                  difficulty
+                }
+              }
+            }
+          `;
+
+          try {
+            const v2Data = await this._graphqlQuery(progressV2Query, { userSlug: username }, 'userProfileUserQuestionProgressV2');
+            const acList = v2Data?.userProfileUserQuestionProgressV2?.numAcceptedQuestions;
+            const qList = v2Data?.allQuestionsCount;
+
+            if (Array.isArray(acList)) {
+              let easy = 0, medium = 0, hard = 0, total = 0;
+              for (const item of acList) {
+                const diff = (item.difficulty || '').toLowerCase();
+                const count = Number(item.count) || 0;
+                if (diff === 'all') total = count;
+                else if (diff === 'easy') easy = count;
+                else if (diff === 'medium') medium = count;
+                else if (diff === 'hard') hard = count;
+              }
+              if (total === 0) total = easy + medium + hard;
+
+              let totalAvailable = 3400;
+              if (Array.isArray(qList)) {
+                const allQ = qList.find(q => (q.difficulty || '').toLowerCase() === 'all');
+                if (allQ && allQ.count > 0) totalAvailable = allQ.count;
+              }
+
+              const result = {
+                easy,
+                medium,
+                hard,
+                total,
+                totalAvailable,
+                username,
+                timestamp: Date.now()
+              };
+
+              if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+                await chrome.storage.local.set({
+                  leetcode_graphql_stats: result,
+                  leetcode_total_questions: totalAvailable,
+                  leetcode_username: username
+                });
+              }
+
+              return result;
+            }
+          } catch (v2Err) {
+            console.warn('[LeetCode-Backup] userProfileUserQuestionProgressV2 failed:', v2Err.message);
+          }
+        }
+
+        // Fetch question count at least
+        await this.fetchTotalQuestions();
+      } catch (err) {
+        console.warn('[LeetCode-Backup] fetchUserSolvedStats failed:', err.message);
+      }
+      return null;
+    }
+
+    /**
      * Queries recent submissions for a specific problem to get the latest accepted submission ID
      *
      * @param {string} problemSlug - Problem title slug (e.g. "two-sum")
@@ -525,6 +708,33 @@
         }
       }
 
+      let isAccepted = false;
+      let result = 'Not Accepted';
+      let statusDisplay = fallbackMeta.statusDisplay || 'Not Accepted';
+
+      // Check DOM for submission result
+      const resultEl = document.querySelector(
+        '[data-e2e-locator="submission-result"], [class*="text-green"], [class*="text-olive"], [class*="text-emerald"], [class*="text-success"]'
+      );
+      const resText = resultEl ? (resultEl.textContent || '').trim() : '';
+
+      if (resText === 'Accepted' || resText.startsWith('Accepted') || fallbackMeta.isAccepted) {
+        isAccepted = true;
+        result = 'Accepted';
+        statusDisplay = 'Accepted';
+      } else {
+        const bodyText = document.body ? document.body.innerText : '';
+        if (bodyText.includes('Wrong Answer')) statusDisplay = 'Wrong Answer';
+        else if (bodyText.includes('Time Limit Exceeded')) statusDisplay = 'Time Limit Exceeded';
+        else if (bodyText.includes('Runtime Error')) statusDisplay = 'Runtime Error';
+        else if (bodyText.includes('Compile Error')) statusDisplay = 'Compile Error';
+        else if (bodyText.includes('Memory Limit Exceeded')) statusDisplay = 'Memory Limit Exceeded';
+      }
+
+      if (!isAccepted && !fallbackMeta.allowNotAccepted) {
+        return null;
+      }
+
       const paths = this.buildPaths(frontendId, slug, lang);
       const timestamp = Math.floor(Date.now() / 1000);
 
@@ -538,7 +748,9 @@
         language: lang,
         timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
-        result: 'Accepted',
+        result: result,
+        accepted: isAccepted,
+        status_display: statusDisplay,
         runtime: runtime || null,
         runtime_percentile: runtimePercentile || null,
         memory: memory || null,
@@ -558,6 +770,9 @@
         folderName: paths.folderName,
         solutionPath: paths.solutionPath,
         metadataPath: paths.metadataPath,
+        accepted: isAccepted,
+        result: result,
+        statusDisplay: statusDisplay,
         metadata,
         metadataJson: JSON.stringify(metadata, null, 2) + '\n'
       };
@@ -575,18 +790,16 @@
       const timestamp = details.timestamp || Math.floor(Date.now() / 1000);
       const paths = this.buildPaths(frontendId, slug, lang);
 
-      // Only process Accepted submissions
       const statusCode = details.statusCode;
-      const statusDisplay = details.statusDisplay || fallbackMeta.statusDisplay;
-      if (statusCode && statusCode !== 10) {
-        console.log(`[LeetCode-Backup] Submission #${submissionId} statusCode is ${statusCode} (not Accepted). Skipping.`);
-        return null;
-      }
-      if (statusDisplay && statusDisplay !== 'Accepted') {
-        console.log(`[LeetCode-Backup] Submission #${submissionId} status is "${statusDisplay}" (not Accepted). Skipping.`);
+      const statusDisplay = details.statusDisplay || fallbackMeta.statusDisplay || '';
+      const isAccepted = (statusCode === 10 || statusDisplay === 'Accepted');
+
+      if (!isAccepted && !fallbackMeta.allowNotAccepted) {
+        console.log(`[LeetCode-Backup] Submission #${submissionId} status is "${statusDisplay || statusCode}" (not Accepted). Skipping.`);
         return null;
       }
 
+      const result = isAccepted ? 'Accepted' : 'Not Accepted';
       const difficulty = q.difficulty || fallbackMeta.difficulty || 'Medium';
 
       const metadata = {
@@ -599,7 +812,9 @@
         language: lang,
         timestamp: timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
-        result: 'Accepted',
+        result: result,
+        accepted: isAccepted,
+        status_display: statusDisplay || result,
         runtime: details.runtimeDisplay || (details.runtime ? `${details.runtime} ms` : null),
         runtime_percentile: details.runtimePercentile ? `${Number(details.runtimePercentile).toFixed(1)}%` : null,
         memory: details.memoryDisplay || (details.memory ? `${(details.memory / (1024 * 1024)).toFixed(1)} MB` : null),
@@ -619,6 +834,9 @@
         folderName: paths.folderName,
         solutionPath: paths.solutionPath,
         metadataPath: paths.metadataPath,
+        accepted: isAccepted,
+        result: result,
+        statusDisplay: statusDisplay || result,
         metadata,
         metadataJson: JSON.stringify(metadata, null, 2) + '\n'
       };
@@ -637,6 +855,15 @@
       const paths = this.buildPaths(frontendId, slug, lang);
       const difficulty = q.difficulty || fallbackMeta.difficulty || 'Medium';
 
+      const statusDisplay = details.statusDisplay || fallbackMeta.statusDisplay || '';
+      const isAccepted = statusDisplay === 'Accepted';
+
+      if (!isAccepted && !fallbackMeta.allowNotAccepted) {
+        return null;
+      }
+
+      const result = isAccepted ? 'Accepted' : 'Not Accepted';
+
       const metadata = {
         submission_id: String(submissionId),
         problem_id: String(q.questionId || frontendId),
@@ -647,7 +874,9 @@
         language: lang,
         timestamp: timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
-        result: 'Accepted',
+        result: result,
+        accepted: isAccepted,
+        status_display: statusDisplay || result,
         runtime: details.runtime || null,
         runtime_percentile: null,
         memory: details.memory || null,
@@ -667,6 +896,9 @@
         folderName: paths.folderName,
         solutionPath: paths.solutionPath,
         metadataPath: paths.metadataPath,
+        accepted: isAccepted,
+        result: result,
+        statusDisplay: statusDisplay || result,
         metadata,
         metadataJson: JSON.stringify(metadata, null, 2) + '\n'
       };
@@ -684,6 +916,14 @@
       const timestamp = details.timestamp || Math.floor(Date.now() / 1000);
       const paths = this.buildPaths(frontendId, slug, lang);
 
+      const statusMsg = details.status_msg || details.statusDisplay || fallbackMeta.statusDisplay || '';
+      const isAccepted = statusMsg === 'Accepted' || details.status_code === 10;
+
+      if (!isAccepted && !fallbackMeta.allowNotAccepted) {
+        return null;
+      }
+
+      const result = isAccepted ? 'Accepted' : 'Not Accepted';
       const difficulty = fallbackMeta.difficulty || 'Medium';
 
       const metadata = {
@@ -696,7 +936,9 @@
         language: lang,
         timestamp: timestamp,
         submitted_at: new Date(timestamp * 1000).toISOString(),
-        result: 'Accepted',
+        result: result,
+        accepted: isAccepted,
+        status_display: statusMsg || result,
         runtime: details.status_runtime || null,
         runtime_percentile: null,
         memory: details.status_memory || null,
@@ -716,6 +958,9 @@
         folderName: paths.folderName,
         solutionPath: paths.solutionPath,
         metadataPath: paths.metadataPath,
+        accepted: isAccepted,
+        result: result,
+        statusDisplay: statusMsg || result,
         metadata,
         metadataJson: JSON.stringify(metadata, null, 2) + '\n'
       };

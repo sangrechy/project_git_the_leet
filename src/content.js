@@ -332,13 +332,14 @@
   const processedSubmissionIds = new Set();
 
   /**
-   * Called when an "Accepted" submission is detected on the page
+   * Called when a submission (Accepted or Not Accepted) is detected on the page
    * @param {string} [slug] - Optional problem slug
    * @param {string|number} [specificSubmissionId] - Optional known submission ID
+   * @param {Object} [options] - Options including isAccepted and statusDisplay
    */
-  async function handleAcceptedSubmission(slug, specificSubmissionId) {
+  async function handleSubmission(slug, specificSubmissionId, options = {}) {
     if (isContestMode()) {
-      console.log('[git the leet] Contest page detected in handleAcceptedSubmission. Sync aborted.');
+      console.log('[git the leet] Contest page detected in handleSubmission. Sync aborted.');
       return;
     }
     if (isProcessingSubmission) return;
@@ -355,14 +356,21 @@
         console.warn('[LeetCode-Backup] Problem slug not available or contest page. Aborting.');
         return;
       }
-      console.log(`[LeetCode-Backup] Accepted result detected for problem "${problemSlug}". Fetching details...`);
 
-      let submission = null;
-      if (specificSubmissionId) {
+      let isAccepted = options.isAccepted !== undefined ? Boolean(options.isAccepted) : true;
+      let statusDisplay = options.statusDisplay || (isAccepted ? 'Accepted' : 'Not Accepted');
+
+      console.log(`[LeetCode-Backup] Submission result "${statusDisplay}" detected for problem "${problemSlug}". Fetching details...`);
+
+      let submission = options.submission || null;
+      if (!submission && specificSubmissionId) {
         console.log(`[LeetCode-Backup] Directly fetching details for submission #${specificSubmissionId}`);
         try {
           submission = await submissionReader.getSubmissionDetails(specificSubmissionId, {
-            problemSlug
+            problemSlug,
+            allowNotAccepted: true,
+            statusDisplay,
+            isAccepted
           });
         } catch (err) {
           console.warn(`[LeetCode-Backup] Direct fetch for #${specificSubmissionId} failed, falling back:`, err.message);
@@ -378,12 +386,39 @@
         // Allow brief moment for LeetCode backend to finalize
         await new Promise(r => setTimeout(r, 1200));
         if (isContestMode()) return;
-        submission = await submissionReader.getLatestAcceptedSubmission(problemSlug);
+        if (isAccepted) {
+          submission = await submissionReader.getLatestAcceptedSubmission(problemSlug);
+        } else {
+          try {
+            submission = await submissionReader.extractFromPageDom(specificSubmissionId, problemSlug, {
+              allowNotAccepted: true,
+              isAccepted,
+              statusDisplay
+            });
+          } catch (e) {}
+        }
       }
 
       if (!submission || !submission.submissionId || isContestMode()) {
-        console.warn('[LeetCode-Backup] Could not obtain accepted submission details or contest detected.');
+        console.warn('[LeetCode-Backup] Could not obtain submission details or contest detected.');
         return;
+      }
+
+      // Re-verify acceptance from submission metadata if available
+      if (submission.accepted !== undefined) {
+        isAccepted = Boolean(submission.accepted);
+      } else if (submission.result) {
+        isAccepted = submission.result === 'Accepted';
+      }
+      statusDisplay = submission.statusDisplay || statusDisplay || (isAccepted ? 'Accepted' : 'Not Accepted');
+      submission.accepted = isAccepted;
+      submission.result = isAccepted ? 'Accepted' : 'Not Accepted';
+      submission.statusDisplay = statusDisplay;
+      if (submission.metadata) {
+        submission.metadata.accepted = isAccepted;
+        submission.metadata.result = submission.result;
+        submission.metadata.status_display = statusDisplay;
+        submission.metadataJson = JSON.stringify(submission.metadata, null, 2) + '\n';
       }
 
       const strSubId = String(submission.submissionId);
@@ -405,10 +440,11 @@
       processedSubmissionIds.add(strSubId);
 
       // 1. Save locally as pending
+      const statusTitle = isAccepted ? 'Accepted solution' : 'Submission [Not Accepted]';
       const toastHandle = toasts.show(
         'loading',
         'LeetCode Backup',
-        `Accepted solution #${strSubId} detected. Saving locally...`,
+        `${statusTitle} #${strSubId} detected. Saving locally...`,
         0
       );
 
@@ -448,10 +484,11 @@
       }
 
       // 3. Initiate GitHub upload via background service worker (immune to page CORS/CSP restrictions)
+      const uploadingTag = isAccepted ? '' : ' [Not Accepted]';
       toastHandle.update(
         'loading',
         'Backing up to GitHub...',
-        `Uploading ${queuedItem.solutionPath} to ${settings.repoOwner}/${settings.repoName}...`,
+        `Uploading ${queuedItem.solutionPath}${uploadingTag} to ${settings.repoOwner}/${settings.repoName}...`,
         0
       );
 
@@ -491,12 +528,18 @@
         if (response && response.success) {
           await localQueue.updateStatus(queuedItem.submissionId, 'synced');
 
+          const committedTag = isAccepted ? '' : ' [Not Accepted]';
           toastHandle.update(
-            'success',
-            'Backed Up to GitHub',
-            `Committed: ${queuedItem.solutionPath}`,
+            isAccepted ? 'success' : 'info',
+            isAccepted ? 'Backed Up to GitHub' : 'Backed Up to GitHub [Not Accepted]',
+            `Committed: ${queuedItem.solutionPath}${committedTag}`,
             4500
           );
+
+          // If accepted, refresh GraphQL stats in background so popup count is immediately fresh
+          if (isAccepted && typeof submissionReader !== 'undefined' && submissionReader.fetchUserSolvedStats) {
+            submissionReader.fetchUserSolvedStats().catch(() => {});
+          }
         } else {
           const errMsg = response?.error || 'GitHub upload failed';
           throw new Error(errMsg);
@@ -524,13 +567,18 @@
         );
       }
     } catch (err) {
-      console.error('[LeetCode-Backup] Error handling accepted submission:', err);
+      console.error('[LeetCode-Backup] Error handling submission:', err);
     } finally {
       // Release processing lock after brief cooldown
       setTimeout(() => {
         isProcessingSubmission = false;
       }, 2000);
     }
+  }
+
+  // Alias for backward compatibility
+  function handleAcceptedSubmission(slug, specificSubmissionId) {
+    return handleSubmission(slug, specificSubmissionId, { isAccepted: true, statusDisplay: 'Accepted' });
   }
 
   /**
@@ -572,7 +620,7 @@
         if (txt === 'Accepted' || txt.startsWith('Accepted')) {
           clearInterval(interval);
           console.log(`[LeetCode-Backup] URL submission #${strId} verified as Accepted in DOM.`);
-          handleAcceptedSubmission(problemSlug, strId);
+          handleSubmission(problemSlug, strId, { isAccepted: true, statusDisplay: 'Accepted' });
           return;
         }
         if (
@@ -584,8 +632,8 @@
             txt.includes('Memory Limit'))
         ) {
           clearInterval(interval);
-          processedSubmissionIds.add(strId);
-          console.log(`[LeetCode-Backup] URL submission #${strId} verified as not accepted (${txt}). Skipping.`);
+          console.log(`[LeetCode-Backup] URL submission #${strId} verified as not accepted (${txt}).`);
+          handleSubmission(problemSlug, strId, { isAccepted: false, statusDisplay: txt });
           return;
         }
       }
@@ -593,15 +641,20 @@
       // If DOM hasn't resolved after ~2.4s, query authenticated API directly
       if (attempts === 6 || attempts === 12 || attempts === maxAttempts) {
         try {
-          const details = await submissionReader.getSubmissionDetails(strId, { problemSlug });
+          const details = await submissionReader.getSubmissionDetails(strId, { problemSlug, allowNotAccepted: true });
           if (details && details.submissionId) {
             clearInterval(interval);
-            console.log(`[LeetCode-Backup] URL submission #${strId} verified as Accepted via LeetCode API!`);
-            handleAcceptedSubmission(problemSlug, strId);
+            const isAccepted = details.accepted !== false && details.result === 'Accepted';
+            console.log(`[LeetCode-Backup] URL submission #${strId} verified via LeetCode API (Accepted: ${isAccepted})!`);
+            handleSubmission(problemSlug, strId, {
+              isAccepted,
+              statusDisplay: details.statusDisplay || (isAccepted ? 'Accepted' : 'Not Accepted'),
+              submission: details
+            });
             return;
           }
         } catch (e) {
-          // If details query failed or was not accepted, keep polling
+          // Keep polling
         }
       }
 
@@ -658,6 +711,20 @@
   }
 
   /**
+   * Scans target element for non-accepted submission markers (Wrong Answer, TLE, etc.)
+   */
+  function checkForNotAcceptedResult(node) {
+    if (!node) return null;
+    const text = (node.textContent || node.nodeValue || '').trim();
+    if (!text || text.length > 200) return null;
+    const candidates = ['Wrong Answer', 'Time Limit Exceeded', 'Runtime Error', 'Compile Error', 'Memory Limit Exceeded'];
+    for (const c of candidates) {
+      if (text.includes(c)) return c;
+    }
+    return null;
+  }
+
+  /**
    * Initializes DOM MutationObserver on practice problem page.
    * Does NOT disconnect existing observer if already observing the same problem slug.
    */
@@ -679,11 +746,19 @@
     activeObservedSlug = problemSlug;
     console.log(`[LeetCode-Backup] Starting submission observer for practice problem: ${problemSlug}`);
 
-    // Immediately inspect existing DOM in case "Accepted" is already rendered!
+    // Immediately inspect existing DOM in case result is already rendered!
     const existingResult = document.querySelector('[data-e2e-locator="submission-result"]');
-    if (existingResult && checkForAcceptedResult(existingResult)) {
-      const urlSubId = contestGuard.extractSubmissionId(window.location.href);
-      handleAcceptedSubmission(problemSlug, urlSubId);
+    if (existingResult) {
+      if (checkForAcceptedResult(existingResult)) {
+        const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+        handleSubmission(problemSlug, urlSubId, { isAccepted: true, statusDisplay: 'Accepted' });
+      } else {
+        const notAcc = checkForNotAcceptedResult(existingResult);
+        if (notAcc) {
+          const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+          handleSubmission(problemSlug, urlSubId, { isAccepted: false, statusDisplay: notAcc });
+        }
+      }
     }
 
     activeObserver = new MutationObserver((mutations) => {
@@ -698,14 +773,27 @@
           for (const addedNode of mutation.addedNodes) {
             if (checkForAcceptedResult(addedNode)) {
               const urlSubId = contestGuard.extractSubmissionId(window.location.href);
-              handleAcceptedSubmission(problemSlug, urlSubId);
+              handleSubmission(problemSlug, urlSubId, { isAccepted: true, statusDisplay: 'Accepted' });
+              return;
+            }
+            const notAcc = checkForNotAcceptedResult(addedNode);
+            if (notAcc) {
+              const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+              handleSubmission(problemSlug, urlSubId, { isAccepted: false, statusDisplay: notAcc });
               return;
             }
           }
         } else if (mutation.type === 'characterData') {
-          if ((mutation.target.nodeValue || '').trim() === 'Accepted') {
+          const val = (mutation.target.nodeValue || '').trim();
+          if (val === 'Accepted') {
             const urlSubId = contestGuard.extractSubmissionId(window.location.href);
-            handleAcceptedSubmission(problemSlug, urlSubId);
+            handleSubmission(problemSlug, urlSubId, { isAccepted: true, statusDisplay: 'Accepted' });
+            return;
+          }
+          const notAcc = checkForNotAcceptedResult(mutation.target);
+          if (notAcc) {
+            const urlSubId = contestGuard.extractSubmissionId(window.location.href);
+            handleSubmission(problemSlug, urlSubId, { isAccepted: false, statusDisplay: notAcc });
             return;
           }
         }
@@ -743,7 +831,20 @@
       }
       const slug = guardCheck.slug || contestGuard.extractProblemSlug(currentUrl);
       console.log(`[LeetCode-Backup] Network interceptor captured Accepted submission #${event.data.submissionId} (source: ${event.data.source})`);
-      handleAcceptedSubmission(slug, event.data.submissionId);
+      handleSubmission(slug, event.data.submissionId, { isAccepted: true, statusDisplay: 'Accepted' });
+    }
+
+    if (event.data.type === 'LEETCODE_SUBMISSION_NOT_ACCEPTED' && event.data.submissionId) {
+      const currentUrl = window.location.href;
+      const settings = await getExtensionSettings();
+      const guardCheck = contestGuard.shouldSync(currentUrl, settings.syncContests);
+      if (!guardCheck.allowed) {
+        console.log('[LeetCode-Backup] Contest guard active: ignoring submission event on contest page.');
+        return;
+      }
+      const slug = guardCheck.slug || contestGuard.extractProblemSlug(currentUrl);
+      console.log(`[LeetCode-Backup] Network interceptor captured Not Accepted submission #${event.data.submissionId} (${event.data.statusMsg})`);
+      handleSubmission(slug, event.data.submissionId, { isAccepted: false, statusDisplay: event.data.statusMsg || 'Not Accepted' });
     }
   });
 
@@ -800,7 +901,7 @@
         checkAndProcessUrlSubmission(problemSlug, urlSubId);
       }
 
-      // 2. Scan page for Accepted
+      // 2. Scan page for Accepted / Not Accepted result
       const resultElements = document.querySelectorAll(
         '[data-e2e-locator="submission-result"], [class*="text-green"], [class*="text-olive"], [class*="text-emerald"], [class*="text-success"]'
       );
@@ -808,7 +909,19 @@
         const txt = (el.textContent || '').trim();
         if (txt === 'Accepted' || txt.startsWith('Accepted')) {
           console.log('[LeetCode-Backup] Detected "Accepted" in DOM during poll.');
-          handleAcceptedSubmission(problemSlug, urlSubId);
+          handleSubmission(problemSlug, urlSubId, { isAccepted: true, statusDisplay: 'Accepted' });
+          return;
+        }
+        if (
+          txt &&
+          (txt.includes('Wrong Answer') ||
+            txt.includes('Time Limit') ||
+            txt.includes('Runtime Error') ||
+            txt.includes('Compile Error') ||
+            txt.includes('Memory Limit'))
+        ) {
+          console.log(`[LeetCode-Backup] Detected "${txt}" in DOM during poll.`);
+          handleSubmission(problemSlug, urlSubId, { isAccepted: false, statusDisplay: txt });
           return;
         }
       }

@@ -375,14 +375,16 @@
       const title = item.problemTitle || 'Solution';
       const lang = item.language || 'code';
       const subId = item.submissionId;
+      const isAccepted = item.accepted !== false && item.result !== 'Not Accepted';
+      const notAcceptedTag = isAccepted ? '' : ' [Not Accepted]';
 
-      const solutionMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]`;
+      const solutionMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]${notAcceptedTag}`;
       const solResult = await this.putFile(item.solutionPath, item.code, solutionMsg);
 
       // Pacing interval to let GitHub ref settle
       await new Promise(r => setTimeout(r, 800));
 
-      const metaMsg = `LeetCode #${frontendId}: ${title} metadata [Submission #${subId}]`;
+      const metaMsg = `LeetCode #${frontendId}: ${title} metadata [Submission #${subId}]${notAcceptedTag}`;
       const metaResult = await this.putFile(item.metadataPath, item.metadataJson, metaMsg);
 
       return {
@@ -409,7 +411,9 @@
       const title = item.problemTitle || 'Solution';
       const lang = item.language || 'code';
       const subId = item.submissionId;
-      const commitMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]`;
+      const isAccepted = item.accepted !== false && item.result !== 'Not Accepted';
+      const notAcceptedTag = isAccepted ? '' : ' [Not Accepted]';
+      const commitMsg = `LeetCode #${frontendId}: ${title} (${lang}) [Submission #${subId}]${notAcceptedTag}`;
 
       try {
         return await this.commitAtomicSubmission(item, commitMsg);
@@ -606,6 +610,9 @@
           difficulty: meta?.difficulty || 'Medium',
           language: meta?.language || ext,
           extension: ext,
+          accepted: meta?.accepted !== undefined ? Boolean(meta.accepted) : (meta?.result ? meta.result === 'Accepted' : true),
+          result: meta?.result || (meta?.accepted === false ? 'Not Accepted' : 'Accepted'),
+          statusDisplay: meta?.status_display || (meta?.result || (meta?.accepted === false ? 'Not Accepted' : 'Accepted')),
           solutionPath: solEntry ? solEntry.path : `leetcode_problem/${item.folderName}/solution.${ext}`,
           metadataPath: `leetcode_problem/${item.folderName}/metadata.json`,
           timestamp: meta?.timestamp || Math.floor(Date.now() / 1000),
